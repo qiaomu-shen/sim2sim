@@ -1,0 +1,29 @@
+# Build outputs
+**/build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.o
+
+# Runtime logs and generated data
+/log/
+/logs/
+/deploy_lstm/robots/g1/log/
+*.log
+*.bin
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor/local state
+.vscode/
+
+# OS/temp files
+.DS_Store
+*.swp
+*~

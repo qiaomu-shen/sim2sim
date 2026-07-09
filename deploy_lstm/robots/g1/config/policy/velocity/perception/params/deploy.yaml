@@ -1,0 +1,126 @@
+# G1 perception policy deploy configuration.
+#
+# Observation group names must match the ONNX input names. This template uses:
+#   obs          - proprioceptive actor input
+#   camera_stack - front depth stack input
+
+joint_ids_map: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
+
+step_dt: 0.02
+
+stiffness: [40.179, 99.098, 40.179, 99.098, 28.501, 28.501,
+            40.179, 99.098, 40.179, 99.098, 28.501, 28.501,
+            40.179, 28.501, 28.501,
+            14.251, 14.251, 14.251, 14.251, 14.251, 16.778, 16.778,
+            14.251, 14.251, 14.251, 14.251, 14.251, 16.778, 16.778]
+
+damping: [2.558, 6.309, 2.558, 6.309, 1.814, 1.814,
+          2.558, 6.309, 2.558, 6.309, 1.814, 1.814,
+          2.558, 1.814, 1.814,
+          0.907, 0.907, 0.907, 0.907, 0.907, 1.068, 1.068,
+          0.907, 0.907, 0.907, 0.907, 0.907, 1.068, 1.068]
+
+default_joint_pos: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0,
+                    -0.1, 0.0, 0.0, 0.3, -0.2, 0.0,
+                    0.0, 0.0, 0.0,
+                    0.2, 0.2, 0.0, 1.28, 0.0, 0.0, 0.0,
+                    0.2, -0.2, 0.0, 1.28, 0.0, 0.0, 0.0]
+
+commands:
+  base_velocity:
+    ranges:
+      lin_vel_x: [-0.5, 1.0]
+      lin_vel_y: [-0.5, 0.5]
+      ang_vel_z: [-1.0, 1.0]
+      heading: null
+
+actions:
+  JointPositionAction:
+    clip: null
+    joint_names: [.*]
+    scale: [0.548, 0.351, 0.548, 0.351, 0.439, 0.439,
+            0.548, 0.351, 0.548, 0.351, 0.439, 0.439,
+            0.548, 0.439, 0.439,
+            0.439, 0.439, 0.439, 0.439, 0.439, 0.075, 0.075,
+            0.439, 0.439, 0.439, 0.439, 0.439, 0.075, 0.075]
+    offset: [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0,
+             -0.1, 0.0, 0.0, 0.3, -0.2, 0.0,
+             0.0, 0.0, 0.0,
+             0.2, 0.2, 0.0, 1.28, 0.0, 0.0, 0.0,
+             0.2, -0.2, 0.0, 1.28, 0.0, 0.0, 0.0]
+    joint_ids: null
+
+observations:
+  obs:
+    base_ang_vel:
+      params: {}
+      clip: null
+      scale: [1.0, 1.0, 1.0]
+      history_length: 8
+
+    projected_gravity:
+      params: {}
+      clip: null
+      scale: [1.0, 1.0, 1.0]
+      history_length: 8
+
+    velocity_commands:
+      params: {command_name: base_velocity}
+      clip: null
+      scale: [1.0, 1.0, 1.0]
+      history_length: 8
+
+    gait_phase:
+      params: {period: 0.6}
+      clip: null
+      scale: [1.0, 1.0]
+      history_length: 8
+
+    joint_pos_rel:
+      params: {}
+      clip: null
+      scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+      history_length: 8
+
+    joint_vel_rel:
+      params: {}
+      clip: null
+      scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+      history_length: 8
+
+    last_action:
+      params: {}
+      clip: null
+      scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+      history_length: 8
+
+  camera_stack:
+    camera:
+      params: {camera_name: front_depth}
+      clip: null
+      scale: null
+      history_length: 8
+
+camera:
+  front_depth:
+    topic: /camera/depth/image_rect_raw
+    bridge_file: /tmp/unitree_g1_front_depth.bin
+    width: 64
+    height: 36
+    channels: 1
+    cutoff_distance: 3.0
+    min_depth: 0.01
+    rotate_k: 0
+    normalize: true

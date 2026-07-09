@@ -1,0 +1,47 @@
+robot: "g1"
+robot_scene: "scene.xml"
+
+domain_id: 1
+interface: "lo"
+
+use_joystick: 1
+joystick_type: "xbox"
+joystick_device: "/dev/input/js0"
+joystick_bits: 16
+
+print_scene_information: 1
+enable_elastic_band: 1
+
+enable_depth_bridge: 1
+depth_bridge_file: "/tmp/unitree_g1_front_depth.bin"
+depth_camera_body: "torso_link"
+depth_width: 64
+depth_height: 36
+depth_min: 0.01
+depth_cutoff: 3.0
+depth_fovy: 55.2
+depth_fps: 50.0
+depth_pitch_deg: -47.6
+depth_pos_x: 0.10
+depth_pos_y: 0.0
+depth_pos_z: 0.45
+
+enable_height_scan_bridge: 1
+height_scan_bridge_file: "/tmp/unitree_g1_height_scan.bin"
+height_scan_body: "pelvis"
+height_scan_size_x: 1.0
+height_scan_size_y: 1.0
+height_scan_resolution: 0.1
+height_scan_ray_start_z: 20.0
+height_scan_offset: 0.5
+height_scan_fps: 50.0
+
+enable_touchdown_truth_log: 1
+touchdown_truth_log_file: "/home/ubt2204/work/111/TRY/sim2sim/deploy_lstm/robots/g1/log/touchdown_truth.csv"
+touchdown_truth_use_latest_run_dir: 1
+touchdown_truth_latest_run_dir_file: "/home/ubt2204/work/111/TRY/sim2sim/deploy_lstm/robots/g1/log/latest_run_dir.txt"
+touchdown_truth_timestamp_run_dir: 1
+touchdown_truth_flush_interval_events: 10
+touchdown_truth_state_interval_ms: 20
+touchdown_truth_min_air_ms: 50
+touchdown_truth_cooldown_ms: 120

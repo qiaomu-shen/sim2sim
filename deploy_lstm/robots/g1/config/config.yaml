@@ -1,0 +1,130 @@
+FSM:
+  _: # enabled fsms
+    Passive:
+      id: 1
+    FixStand:
+      id: 2
+    Velocity:
+      id: 3
+      type: RLBase
+
+    Depth_Walking:
+      id: 4
+      type: RLBase
+
+    Mimic_Dance1_subject2:
+      id: 5
+      type: Mimic
+
+    Lstm_5:
+      id: 6
+      type: RLBase
+
+    BlindWalking_Model2600:
+      id: 7
+      type: RLBase
+
+    SlowLatent_TeacherKL:
+      id: 8
+      type: RLBase
+
+  Passive:
+    transitions: 
+      FixStand: LT + up.on_pressed
+    mode: [
+      1,1,1,1,1,1,
+      1,1,1,1,1,1,
+      1,1,1,
+      1,1,1,1,1,1,1,
+      1,1,1,1,1,1,1,
+    ]
+    kd: [
+      3,3,3,3,3,3,
+      3,3,3,3,3,3,
+      3,3,3,
+      3,3,3,3,3,3,3,  
+      3,3,3,3,3,3,3,  
+    ]
+
+
+  FixStand:
+    transitions: 
+      Passive: LT + B.on_pressed
+      Velocity: A.on_pressed
+      Depth_Walking: X.on_pressed
+
+    kp: [
+      100,100,100,150,40,40,
+      100,100,100,150,40,40,
+      200,200,200,
+      40,40,40,40,40,40,40,
+      40,40,40,40,40,40,40,
+    ]
+    kd: [
+      2,2,2,4,2,2,
+      2,2,2,4,2,2,
+      5,5,5,
+      10,10,10,10,10,10,10,
+      10,10,10,10,10,10,10,
+    ]
+    ts: [0, 2]
+    qs: [
+      [],
+      [ -0.1, 0,0,0.3,-0.2,0,
+        -0.1, 0,0,0.3,-0.2,0,
+        0,0,0,
+        0.35, 0.18,0,0.87,0,0,0,
+        0.35,-0.18,0,0.87,0,0,0
+      ]
+    ]
+
+
+  Velocity:
+    transitions: 
+      Passive: LT + B.on_pressed
+      Mimic_Dance1_subject2: RB + A.on_pressed
+      Lstm_5: B.on_pressed
+      BlindWalking_Model2600: X.on_pressed
+      SlowLatent_TeacherKL: Y.on_pressed
+
+    policy_dir: config/policy/velocity/v0
+
+
+  Depth_Walking:
+    transitions:
+      Passive: LT + B.on_pressed
+      Velocity: A.on_pressed
+
+    policy_dir: config/policy/velocity/g1_depth/
+
+
+  Mimic_Dance1_subject2:
+    transitions:
+      Passive: LT + B.on_pressed
+      Velocity: A.on_pressed
+
+    motion_file: config/policy/mimic/dance1_subject2/params/dance1_subject2.npz
+    policy_dir: config/policy/mimic/dance1_subject2/
+    time_start: 0.0
+    time_end: 1000.0
+
+  Lstm_5:
+    transitions:
+      Passive: LT + B.on_pressed
+      Velocity: A.on_pressed
+
+    policy_dir: config/policy/velocity/lstm5/
+
+  BlindWalking_Model2600:
+    transitions:
+      Passive: LT + B.on_pressed
+      Velocity: A.on_pressed
+
+    policy_dir: config/policy/velocity/blindwalking/
+
+  SlowLatent_TeacherKL:
+    transitions:
+      Passive: LT + B.on_pressed
+      Velocity: A.on_pressed
+
+    policy_dir: config/policy/velocity/slow_latent/

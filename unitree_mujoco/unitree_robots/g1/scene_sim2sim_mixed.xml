@@ -1,0 +1,89 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mujoco model="g1 sim2sim terrain mixed">
+  <include file="g1_29dof.xml" />
+  <statistic center="4 0 0.5" extent="8" />
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0" />
+    <rgba haze="0.15 0.25 0.35 1" />
+    <global azimuth="-130" elevation="-20" />
+  </visual>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072" />
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300" />
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2" />
+  </asset>
+  <worldbody>
+    <light pos="0 0 3" dir="0 0 -1" directional="true" />
+    <geom name="floor" type="plane" size="0 0 0.05" material="groundplane" friction="0.8 0.02 0.001" />
+    <geom name="mixed_rough_00_00" type="box" pos="1.3775 -0.67 -0.01354903" size="0.17 0.16 0.08645097" quat="0.99962032 -0.012921472 0.024334134 0.00031455225" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_00_01" type="box" pos="1.3775 -0.335 -0.02521281" size="0.17 0.16 0.07478719" quat="0.99996862 -0.0046084661 0.0064439442 2.969763e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_00_02" type="box" pos="1.3775 0 -0.03656297" size="0.17 0.16 0.06343703" quat="0.99989567 -0.013786887 -0.0043091018 -5.94153e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_00_03" type="box" pos="1.3775 0.335 -0.034460343" size="0.17 0.16 0.065539657" quat="0.99995998 0.0076691847 -0.0046071138 3.5334221e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_00_04" type="box" pos="1.3775 0.67 -0.029076276" size="0.17 0.16 0.070923724" quat="0.99983208 -0.010000069 -0.015355256 -0.00015357941" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_01_00" type="box" pos="1.7325 -0.67 -0.017433303" size="0.17 0.16 0.082566697" quat="0.99980201 0.018113241 -0.0082353577 0.00014919856" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_01_01" type="box" pos="1.7325 -0.335 -0.01435855" size="0.17 0.16 0.08564145" quat="0.99986208 -0.008407977 0.01432155 0.00012043187" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_01_02" type="box" pos="1.7325 0 -0.034142908" size="0.17 0.16 0.065857092" quat="0.99998226 0.0030919591 -0.0050905357 1.5740007e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_01_03" type="box" pos="1.7325 0.335 -0.012017876" size="0.17 0.16 0.087982124" quat="0.99969823 0.011755255 -0.021568286 0.00025361723" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_01_04" type="box" pos="1.7325 0.67 -0.03902458" size="0.17 0.16 0.06097542" quat="0.99987577 -0.0017979218 -0.015658959 -2.8157082e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_02_00" type="box" pos="2.0875 -0.67 -0.034174115" size="0.17 0.16 0.065825885" quat="0.99950034 0.020292997 0.024228642 -0.00049191755" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_02_01" type="box" pos="2.0875 -0.335 -0.041887837" size="0.17 0.16 0.058112163" quat="0.99974452 -0.021497062 0.0069813339 0.00015011652" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_02_02" type="box" pos="2.0875 0 -0.0093336439" size="0.17 0.16 0.090666356" quat="0.99979089 0.017479519 0.010611675 -0.00018552577" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_02_03" type="box" pos="2.0875 0.335 -0.016617417" size="0.17 0.16 0.083382583" quat="0.99999954 -0.0007723711 -0.00056257633 -4.345179e-07" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_02_04" type="box" pos="2.0875 0.67 -0.012509428" size="0.17 0.16 0.087490572" quat="0.99979375 -0.01765987 0.010027732 0.00017712498" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_03_00" type="box" pos="2.4425 -0.67 -0.01731786" size="0.17 0.16 0.08268214" quat="0.99976943 -0.015488648 0.014870676 0.00023037978" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_03_01" type="box" pos="2.4425 -0.335 -0.036601041" size="0.17 0.16 0.063398959" quat="0.99967282 0.021058226 0.014515733 -0.00030577564" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_03_02" type="box" pos="2.4425 0 -0.026542342" size="0.17 0.16 0.073457658" quat="0.9996532 0.0037772065 0.026061569 -9.8474079e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_03_03" type="box" pos="2.4425 0.335 -0.029654079" size="0.17 0.16 0.070345921" quat="0.99985703 -0.013314095 0.010422548 0.00013878664" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_03_04" type="box" pos="2.4425 0.67 -0.010889665" size="0.17 0.16 0.089110335" quat="0.99977466 -0.015477636 0.014526792 0.00022489108" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_04_00" type="box" pos="2.7975 -0.67 -0.028891565" size="0.17 0.16 0.071108435" quat="0.99996369 0.0084296787 -0.0012519365 1.0553806e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_04_01" type="box" pos="2.7975 -0.335 -0.0092327573" size="0.17 0.16 0.090767243" quat="0.99966484 0.0034207364 0.025661256 -8.7809823e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_04_02" type="box" pos="2.7975 0 -0.0088020301" size="0.17 0.16 0.09119797" quat="0.99957015 -0.016703963 0.024090049 0.00040257234" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_04_03" type="box" pos="2.7975 0.335 -0.015955794" size="0.17 0.16 0.084044206" quat="0.99986219 -0.016040194 0.0042783026 6.8634261e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_04_04" type="box" pos="2.7975 0.67 -0.032991477" size="0.17 0.16 0.067008523" quat="0.99949646 -0.020361706 -0.024330554 -0.00049566117" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_05_00" type="box" pos="3.1525 -0.67 -0.029796115" size="0.17 0.16 0.070203885" quat="0.99958205 0.016832653 -0.023499694 0.00039572758" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_05_01" type="box" pos="3.1525 -0.335 -0.021999103" size="0.17 0.16 0.078000897" quat="0.99983068 0.016789724 -0.0075304651 0.00012645584" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_05_02" type="box" pos="3.1525 0 -0.017350424" size="0.17 0.16 0.082649576" quat="0.99988779 0.004207224 0.014377489 -6.0496107e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_05_03" type="box" pos="3.1525 0.335 -0.025645101" size="0.17 0.16 0.074354899" quat="0.99974995 0.021662568 -0.0055456836 0.00012016379" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_05_04" type="box" pos="3.1525 0.67 -0.035065568" size="0.17 0.16 0.064934432" quat="0.99976566 -0.017030268 -0.013361816 -0.00022760864" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_06_00" type="box" pos="3.5075 -0.67 -0.038370459" size="0.17 0.16 0.061629541" quat="0.99959961 0.019837924 -0.020172406 0.00040033896" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_06_01" type="box" pos="3.5075 -0.335 -0.013083708" size="0.17 0.16 0.086916292" quat="0.99992466 0.012159972 -0.0016743193 2.036121e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_06_02" type="box" pos="3.5075 0 -0.040719418" size="0.17 0.16 0.059280582" quat="0.99962319 -0.013387319 0.023961654 0.00032090322" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_06_03" type="box" pos="3.5075 0.335 -0.028009693" size="0.17 0.16 0.071990307" quat="0.99970695 0.012655745 -0.02063431 0.00026121911" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_06_04" type="box" pos="3.5075 0.67 -0.040847465" size="0.17 0.16 0.059152535" quat="0.99994642 -0.0062896936 -0.0082217148 -5.1714838e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_07_00" type="box" pos="3.8625 -0.67 -0.035312242" size="0.17 0.16 0.064687758" quat="0.99997097 0.0063225858 0.0042515909 -2.6881828e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_07_01" type="box" pos="3.8625 -0.335 -0.022899064" size="0.17 0.16 0.077100936" quat="0.99995358 -0.0082974102 -0.0048981633 -4.0643957e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_07_02" type="box" pos="3.8625 0 -0.033099731" size="0.17 0.16 0.066900269" quat="0.9999784 0.0023660114 -0.0061325972 1.4510108e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_07_03" type="box" pos="3.8625 0.335 -0.019728434" size="0.17 0.16 0.080271566" quat="0.99973568 0.020836159 -0.009715574 0.00020248877" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_07_04" type="box" pos="3.8625 0.67 -0.021764886" size="0.17 0.16 0.078235114" quat="0.99967018 -0.018199922 0.018115874 0.00032981627" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_08_00" type="box" pos="4.2175 -0.67 -0.023878729" size="0.17 0.16 0.076121271" quat="0.9999855 0.0041979267 0.0033716539 -1.4154161e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_08_01" type="box" pos="4.2175 -0.335 -0.03847002" size="0.17 0.16 0.06152998" quat="0.99949429 0.01700411 -0.026866586 0.00045707354" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_08_02" type="box" pos="4.2175 0 -0.03574278" size="0.17 0.16 0.06425722" quat="0.99972889 -0.00071900908 0.023272946 1.6737997e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_08_03" type="box" pos="4.2175 0.335 -0.018025122" size="0.17 0.16 0.081974878" quat="0.99979753 0.018096147 -0.0087974331 0.00015923188" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_08_04" type="box" pos="4.2175 0.67 -0.023214988" size="0.17 0.16 0.076785012" quat="0.99988307 0.0045008637 -0.014614565 6.5785858e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_09_00" type="box" pos="4.5725 -0.67 -0.03922596" size="0.17 0.16 0.06077404" quat="0.99971632 -0.0071905586 -0.022705562 -0.000163312" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_09_01" type="box" pos="4.5725 -0.335 -0.042241638" size="0.17 0.16 0.057758362" quat="0.99969777 -0.01452475 0.01983237 0.0002881473" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_09_02" type="box" pos="4.5725 0 -0.021020979" size="0.17 0.16 0.078979021" quat="0.99992834 0.011249243 0.0040956582 -4.6076358e-05" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_09_03" type="box" pos="4.5725 0.335 -0.025625389" size="0.17 0.16 0.074374611" quat="0.99981025 0.017490912 -0.0085735317 0.00014998734" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_rough_09_04" type="box" pos="4.5725 0.67 -0.033365755" size="0.17 0.16 0.066634245" quat="0.99968076 -0.0094717472 -0.023422592 -0.00022192372" rgba="0.38 0.55 0.34 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stone_01" type="box" pos="5.77 0 -0.01" size="0.17 0.205 0.09" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stone_02" type="box" pos="6.29 0.18 0.01" size="0.19 0.22 0.11" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stone_03" type="box" pos="6.81 -0.16 -0.02" size="0.21 0.19 0.08" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stone_04" type="box" pos="7.33 0.1 0.025" size="0.17 0.205 0.125" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stone_05" type="box" pos="7.85 -0.2 0" size="0.19 0.22 0.1" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stone_06" type="box" pos="8.37 0.04 0.04" size="0.21 0.19 0.14" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stone_07" type="box" pos="8.89 0.21 -0.005" size="0.17 0.205 0.095" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stone_08" type="box" pos="9.41 -0.08 -0.01" size="0.19 0.22 0.09" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stone_09" type="box" pos="9.93 0 0.01" size="0.21 0.19 0.11" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stone_10" type="box" pos="10.45 0.18 -0.02" size="0.17 0.205 0.08" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stairs_up_01" type="box" pos="11.65 0 0.025" size="0.15 0.75 0.125" quat="1 0 0 0" rgba="0.28 0.52 0.78 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stairs_up_02" type="box" pos="11.95 0 0.1" size="0.15 0.75 0.2" quat="1 0 0 0" rgba="0.28 0.52 0.78 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stairs_up_03" type="box" pos="12.25 0 0.175" size="0.15 0.75 0.275" quat="1 0 0 0" rgba="0.28 0.52 0.78 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stairs_up_04" type="box" pos="12.55 0 0.25" size="0.15 0.75 0.35" quat="1 0 0 0" rgba="0.28 0.52 0.78 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stairs_up_05" type="box" pos="12.85 0 0.325" size="0.15 0.75 0.425" quat="1 0 0 0" rgba="0.28 0.52 0.78 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stairs_platform" type="box" pos="13.6 0 0.325" size="0.6 0.75 0.425" quat="1 0 0 0" rgba="0.28 0.52 0.78 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stairs_down_01" type="box" pos="14.35 0 0.25" size="0.15 0.75 0.35" quat="1 0 0 0" rgba="0.28 0.52 0.78 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stairs_down_02" type="box" pos="14.65 0 0.175" size="0.15 0.75 0.275" quat="1 0 0 0" rgba="0.28 0.52 0.78 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stairs_down_03" type="box" pos="14.95 0 0.1" size="0.15 0.75 0.2" quat="1 0 0 0" rgba="0.28 0.52 0.78 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="mixed_stairs_down_04" type="box" pos="15.25 0 0.025" size="0.15 0.75 0.125" quat="1 0 0 0" rgba="0.28 0.52 0.78 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+  </worldbody>
+</mujoco>

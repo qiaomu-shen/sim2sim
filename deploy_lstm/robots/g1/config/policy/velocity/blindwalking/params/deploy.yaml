@@ -1,0 +1,87 @@
+joint_ids_map: [0,1,2,3,4,5,6,7,8,9,10,11,12,15,16,17,18,22,23,24,25]
+step_dt: 0.02
+use_training_step_semantics: true
+
+stiffness: [40.2,99.1,40.2,99.1,28.5,28.5, 40.2,99.1,40.2,99.1,28.5,28.5, 40.2, 14.3,14.3,14.3,14.3, 14.3,14.3,14.3,14.3]
+damping:   [2.6,6.3,2.6,6.3,1.8,1.8, 2.6,6.3,2.6,6.3,1.8,1.8, 2.6, 0.9,0.9,0.9,0.9, 0.9,0.9,0.9,0.9]
+default_joint_pos: [-0.25,0,0,0.46,-0.25,0, -0.25,0,0,0.46,-0.25,0, 0, 0.07,0.24,0,1.39, 0.07,-0.24,0,1.39]
+
+locked_joints:
+  ids: [13,14,19,20,21,26,27,28]
+  positions: [0,0,0,0,0,0,0,0]
+  stiffness: [200,200,40,40,40,40,40,40]
+  damping: [5,5,10,10,10,10,10,10]
+
+entry_posture:
+  enabled: true
+  duration_s: 1.0
+
+commands:
+  base_velocity:
+    deadzone: 0.05
+    ranges:
+      lin_vel_x: [0.0, 0.25]
+      lin_vel_y: [0.0, 0.0]
+      ang_vel_z: [0.0, 0.0]
+      heading: null
+
+actions:
+  JointPositionAction:
+    clip: null
+    joint_names: [.*]
+    raw_clip: [-0.6, 0.6]
+    raw_filter_alpha: 0.92
+    scale: [0.25,0.25,0.25,0.25,0.25,0.25, 0.25,0.25,0.25,0.25,0.25,0.25, 0.25, 0.25,0.25,0.25,0.25, 0.25,0.25,0.25,0.25]
+    offset: [-0.25,0,0,0.46,-0.25,0, -0.25,0,0,0.46,-0.25,0, 0, 0.07,0.24,0,1.39, 0.07,-0.24,0,1.39]
+    joint_ids: null
+
+observations:
+  base_ang_vel:
+    params: {}
+    clip: null
+    scale: null
+    history_length: 1
+  projected_gravity:
+    params: {}
+    clip: null
+    scale: null
+    history_length: 1
+  velocity_commands:
+    params: {command_name: base_velocity}
+    clip: null
+    scale: [2.0, 2.0, 2.0]
+    history_length: 1
+  joint_pos_rel:
+    params: {}
+    clip: null
+    scale: null
+    history_length: 1
+  joint_vel_rel:
+    params: {}
+    clip: null
+    scale: [0.05,0.05,0.05,0.05,0.05,0.05, 0.05,0.05,0.05,0.05,0.05,0.05, 0.05, 0.05,0.05,0.05,0.05, 0.05,0.05,0.05,0.05]
+    history_length: 1
+  last_action:
+    params: {}
+    clip: null
+    scale: null
+    history_length: 1
+  height_scan:
+    params: {size: 121, fill_value: 0.35, bridge_file: "/tmp/unitree_g1_height_scan.bin"}
+    clip: [-1.0, 1.0]
+    scale: null
+    history_length: 1
+
+diagnostics:
+  log_interval_steps: 20
+  run_directory:
+    enabled: true
+    root: log
+    latest_file: log/latest_run_dir.txt
+  touchdown_log:
+    enabled: true
+    flush_interval_steps: 10
+  touchdown_events:
+    enabled: false
+  foot_event_observer:
+    enabled: false

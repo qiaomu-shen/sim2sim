@@ -1,0 +1,89 @@
+joint_ids_map: [0,6,12,1,7,15,22,2,8,16,23,3,9,17,24,4,10,18,25,5,11]
+step_dt: 0.02
+
+# Gains stay in Unitree SDK motor order because the stock unitree_rl_lab
+# controller applies them directly to motor_cmd()[sdk_id].
+stiffness: [
+  40.2,99.1,40.2,99.1,28.5,28.5,
+  40.2,99.1,40.2,99.1,28.5,28.5,
+  40.2,200,200,
+  14.3,14.3,14.3,14.3,40,40,40,
+  14.3,14.3,14.3,14.3,40,40,40
+]
+damping: [
+  2.6,6.3,2.6,6.3,1.8,1.8,
+  2.6,6.3,2.6,6.3,1.8,1.8,
+  2.6,5,5,
+  0.9,0.9,0.9,0.9,10,10,10,
+  0.9,0.9,0.9,0.9,10,10,10
+]
+
+# IsaacLab 21-DOF articulation/action order:
+# L hip pitch, R hip pitch, waist yaw, L hip roll, R hip roll,
+# L/R shoulder pitch, L/R hip yaw, L/R shoulder roll, L/R knee,
+# L/R shoulder yaw, L/R ankle pitch, L/R elbow, L/R ankle roll.
+default_joint_pos: [-0.25,-0.25,0,0,0,0.07,0.07,0,0,0.24,-0.24,0.46,0.46,0,0,-0.25,-0.25,1.39,1.39,0,0]
+
+locked_joints:
+  ids: [13,14,19,20,21,26,27,28]
+  positions: [0,0,0,0,0,0,0,0]
+  stiffness: [200,200,40,40,40,40,40,40]
+  damping: [5,5,10,10,10,10,10,10]
+
+entry_posture:
+  enabled: true
+  duration_s: 1.0
+
+commands:
+  base_velocity:
+    deadzone: 0.05
+    ranges:
+      lin_vel_x: [0.0, 0.25]
+      lin_vel_y: [0.0, 0.0]
+      ang_vel_z: [0.0, 0.0]
+      heading: null
+
+actions:
+  JointPositionAction:
+    clip: null
+    joint_names: [.*]
+    scale: [0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25]
+    offset: [-0.25,-0.25,0,0,0,0.07,0.07,0,0,0.24,-0.24,0.46,0.46,0,0,-0.25,-0.25,1.39,1.39,0,0]
+    joint_ids: null
+
+observations:
+  base_ang_vel:
+    params: {}
+    clip: null
+    scale: null
+    history_length: 1
+  projected_gravity:
+    params: {}
+    clip: null
+    scale: null
+    history_length: 1
+  velocity_commands:
+    params: {command_name: base_velocity}
+    clip: null
+    scale: [2.0, 2.0, 2.0]
+    history_length: 1
+  joint_pos_rel:
+    params: {}
+    clip: null
+    scale: null
+    history_length: 1
+  joint_vel_rel:
+    params: {}
+    clip: null
+    scale: [0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05,0.05]
+    history_length: 1
+  last_action:
+    params: {}
+    clip: null
+    scale: null
+    history_length: 1
+  height_scan:
+    params: {size: 121, fill_value: 0.293, bridge_file: "/tmp/unitree_g1_height_scan.bin"}
+    clip: [-1.0, 1.0]
+    scale: null
+    history_length: 1

@@ -1,0 +1,17 @@
+*.a binary
+*.so binary
+*.so.* binary
+*.onnx binary
+*.data binary
+*.npz binary
+*.npy binary
+*.pt binary
+*.usd binary
+*.usda binary
+*.STL binary
+*.stl binary
+*.obj binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.db binary
