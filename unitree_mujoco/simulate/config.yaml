@@ -1,7 +1,7 @@
 robot: "g1"
 robot_scene: "scene.xml"
 
-domain_id: 1
+domain_id: 0
 interface: "lo"
 
 use_joystick: 1
