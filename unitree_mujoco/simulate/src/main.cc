@@ -70,6 +70,13 @@ public:
     delta_x[1] = point_[1] - x[1];
     delta_x[2] = point_[2] - x[2];
     double distance = sqrt(delta_x[0] * delta_x[0] + delta_x[1] * delta_x[1] + delta_x[2] * delta_x[2]);
+    if (distance < 1.0e-6)
+    {
+      f_[0] = 0.0;
+      f_[1] = 0.0;
+      f_[2] = 0.0;
+      return;
+    }
 
     std::vector<double> direction = {0.0, 0.0, 0.0};
     direction[0] = delta_x[0] / distance;
@@ -112,6 +119,64 @@ namespace
   mjtNum *ctrlnoise = nullptr;
 
   using Seconds = std::chrono::duration<double>;
+
+  double NormalizeAngle(double angle)
+  {
+    while (angle > mjPI)
+    {
+      angle -= 2.0 * mjPI;
+    }
+    while (angle < -mjPI)
+    {
+      angle += 2.0 * mjPI;
+    }
+    return angle;
+  }
+
+  void ApplyElasticBandAutoAlign(mjModel* model, mjData* data, const int body_id)
+  {
+    if (!model || !data || param::config.elastic_band_auto_align == 0 ||
+        body_id < 0 || body_id >= model->nbody)
+    {
+      return;
+    }
+
+    const mjtNum* xmat = data->xmat + 9 * body_id;
+    const mjtNum* cvel = data->cvel + 6 * body_id;
+    const double torque_limit =
+      std::max(0.0, param::config.elastic_band_align_torque_limit);
+
+    const std::array<double, 3> body_z = {
+      static_cast<double>(xmat[2]),
+      static_cast<double>(xmat[5]),
+      static_cast<double>(xmat[8])
+    };
+    const double kp_upright = param::config.elastic_band_align_kp_upright;
+    const double kd_upright = param::config.elastic_band_align_kd_upright;
+
+    std::array<double, 3> torque = {
+      kp_upright * body_z[1] - kd_upright * static_cast<double>(cvel[0]),
+      -kp_upright * body_z[0] - kd_upright * static_cast<double>(cvel[1]),
+      0.0
+    };
+
+    const double yaw = std::atan2(static_cast<double>(xmat[3]),
+                                  static_cast<double>(xmat[0]));
+    const double target_yaw =
+      param::config.elastic_band_target_yaw_deg * mjPI / 180.0;
+    const double yaw_error = NormalizeAngle(target_yaw - yaw);
+    torque[2] += param::config.elastic_band_align_kp_yaw * yaw_error -
+      param::config.elastic_band_align_kd_yaw * static_cast<double>(cvel[2]);
+
+    const int wrench = 6 * body_id;
+    for (int i = 0; i < 3; ++i)
+    {
+      const double value = torque_limit > 0.0
+        ? std::clamp(torque[i], -torque_limit, torque_limit)
+        : torque[i];
+      data->xfrc_applied[wrench + 3 + i] += static_cast<mjtNum>(value);
+    }
+  }
 
   std::string MakeRunTimestamp()
   {
@@ -807,9 +872,12 @@ namespace
       const double resolution = std::max(1.0e-6, param::config.height_scan_resolution);
       const double start_x = -0.5 * param::config.height_scan_size_x;
       const double start_y = -0.5 * param::config.height_scan_size_y;
-      const double sensor_height = static_cast<double>(xpos[2]);
       const double ray_start_z = param::config.height_scan_ray_start_z;
       const double offset = param::config.height_scan_offset;
+      const double sensor_height =
+        static_cast<double>(xpos[2]) +
+        (param::config.height_scan_sensor_height_includes_ray_start_z != 0 ? ray_start_z : 0.0);
+      const double value_clip = param::config.height_scan_value_clip;
 
       for (int iy = 0; iy < count_y; ++iy)
       {
@@ -827,10 +895,17 @@ namespace
           double hit_z = 0.0;
           if (!CastTerrainHitZ(model, data, origin, ray, hit_z))
           {
-            hit_z = sensor_height - offset;
+            // A miss is unknown terrain. For sim testing, fill it as flat
+            // ground instead of emitting 0.0, which looks like a false obstacle.
+            hit_z = 0.0;
           }
 
-          values.push_back(static_cast<float>(sensor_height - hit_z - offset));
+          double value = sensor_height - hit_z - offset;
+          if (value_clip > 0.0)
+          {
+            value = std::clamp(value, -value_clip, value_clip);
+          }
+          values.push_back(static_cast<float>(value));
         }
       }
     }
@@ -1291,6 +1366,15 @@ namespace
                 // elastic band on base link
                 if (param::config.enable_elastic_band == 1)
                 {
+                  const int wrench = param::config.band_attached_link;
+                  const int body_id = wrench / 6;
+                  if (wrench >= 0 && wrench + 5 < 6 * m->nbody)
+                  {
+                    for (int i = 0; i < 6; ++i)
+                    {
+                      d->xfrc_applied[wrench + i] = 0;
+                    }
+                  }
                   if (elastic_band.enable_)
                   {
                     std::vector<double> x = {d->qpos[0], d->qpos[1], d->qpos[2]};
@@ -1298,9 +1382,13 @@ namespace
 
                     elastic_band.Advance(x, dx);
 
-                    d->xfrc_applied[param::config.band_attached_link] = elastic_band.f_[0];
-                    d->xfrc_applied[param::config.band_attached_link + 1] = elastic_band.f_[1];
-                    d->xfrc_applied[param::config.band_attached_link + 2] = elastic_band.f_[2];
+                    if (wrench >= 0 && wrench + 5 < 6 * m->nbody)
+                    {
+                      d->xfrc_applied[wrench] = elastic_band.f_[0];
+                      d->xfrc_applied[wrench + 1] = elastic_band.f_[1];
+                      d->xfrc_applied[wrench + 2] = elastic_band.f_[2];
+                      ApplyElasticBandAutoAlign(m, d, body_id);
+                    }
                   }
                 }
 
@@ -1397,6 +1485,12 @@ void *UnitreeSdk2BridgeThread(void *arg)
   int body_id = mj_name2id(m, mjOBJ_BODY, "torso_link");
   if (body_id < 0) {
     body_id = mj_name2id(m, mjOBJ_BODY, "base_link");
+  }
+  if (body_id < 0) {
+    body_id = mj_name2id(m, mjOBJ_BODY, "pelvis");
+  }
+  if (body_id < 0) {
+    body_id = 0;
   }
   param::config.band_attached_link = 6 * body_id;
   

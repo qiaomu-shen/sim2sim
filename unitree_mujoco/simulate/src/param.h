@@ -25,6 +25,13 @@ inline struct SimulationConfig
 
     int enable_elastic_band;
     int band_attached_link = 0;
+    int elastic_band_auto_align = 1;
+    double elastic_band_target_yaw_deg = 0.0;
+    double elastic_band_align_kp_upright = 140.0;
+    double elastic_band_align_kd_upright = 18.0;
+    double elastic_band_align_kp_yaw = 80.0;
+    double elastic_band_align_kd_yaw = 12.0;
+    double elastic_band_align_torque_limit = 120.0;
 
     int enable_depth_bridge = 1;
     std::string depth_bridge_file = "/tmp/unitree_g1_front_depth.bin";
@@ -49,6 +56,8 @@ inline struct SimulationConfig
     double height_scan_ray_start_z = 20.0;
     double height_scan_offset = 0.5;
     double height_scan_fps = 50.0;
+    int height_scan_sensor_height_includes_ray_start_z = 0;
+    double height_scan_value_clip = 2.0;
 
     int enable_touchdown_truth_log = 1;
     std::string touchdown_truth_log_file =
@@ -77,6 +86,13 @@ inline struct SimulationConfig
             joystick_bits = cfg["joystick_bits"].as<int>();
             print_scene_information = cfg["print_scene_information"].as<int>();
             enable_elastic_band = cfg["enable_elastic_band"].as<int>();
+            if (cfg["elastic_band_auto_align"]) elastic_band_auto_align = cfg["elastic_band_auto_align"].as<int>();
+            if (cfg["elastic_band_target_yaw_deg"]) elastic_band_target_yaw_deg = cfg["elastic_band_target_yaw_deg"].as<double>();
+            if (cfg["elastic_band_align_kp_upright"]) elastic_band_align_kp_upright = cfg["elastic_band_align_kp_upright"].as<double>();
+            if (cfg["elastic_band_align_kd_upright"]) elastic_band_align_kd_upright = cfg["elastic_band_align_kd_upright"].as<double>();
+            if (cfg["elastic_band_align_kp_yaw"]) elastic_band_align_kp_yaw = cfg["elastic_band_align_kp_yaw"].as<double>();
+            if (cfg["elastic_band_align_kd_yaw"]) elastic_band_align_kd_yaw = cfg["elastic_band_align_kd_yaw"].as<double>();
+            if (cfg["elastic_band_align_torque_limit"]) elastic_band_align_torque_limit = cfg["elastic_band_align_torque_limit"].as<double>();
 
             if (cfg["enable_depth_bridge"]) enable_depth_bridge = cfg["enable_depth_bridge"].as<int>();
             if (cfg["depth_bridge_file"]) depth_bridge_file = cfg["depth_bridge_file"].as<std::string>();
@@ -100,6 +116,11 @@ inline struct SimulationConfig
             if (cfg["height_scan_ray_start_z"]) height_scan_ray_start_z = cfg["height_scan_ray_start_z"].as<double>();
             if (cfg["height_scan_offset"]) height_scan_offset = cfg["height_scan_offset"].as<double>();
             if (cfg["height_scan_fps"]) height_scan_fps = cfg["height_scan_fps"].as<double>();
+            if (cfg["height_scan_sensor_height_includes_ray_start_z"]) {
+                height_scan_sensor_height_includes_ray_start_z =
+                    cfg["height_scan_sensor_height_includes_ray_start_z"].as<int>();
+            }
+            if (cfg["height_scan_value_clip"]) height_scan_value_clip = cfg["height_scan_value_clip"].as<double>();
             if (cfg["enable_touchdown_truth_log"]) enable_touchdown_truth_log = cfg["enable_touchdown_truth_log"].as<int>();
             if (cfg["touchdown_truth_log_file"]) touchdown_truth_log_file = cfg["touchdown_truth_log_file"].as<std::string>();
             if (cfg["touchdown_truth_use_latest_run_dir"]) touchdown_truth_use_latest_run_dir = cfg["touchdown_truth_use_latest_run_dir"].as<int>();

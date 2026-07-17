@@ -7,6 +7,8 @@
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 #include "isaaclab/envs/mdp/terminations.h"
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <chrono>
 #include <mutex>
@@ -21,6 +23,7 @@ public:
     {
         entry_posture_active_ = false;
         policy_thread_running = false;
+        policy_faulted_ = false;
 
         for (int i = 0; i < env->robot->data.joint_stiffness.size(); ++i)
         {
@@ -53,15 +56,29 @@ public:
 
             // Initialize timing
             auto sleepTill = clock::now() + dt;
-            env->reset();
+            try {
+                env->reset();
+                spdlog::info(
+                    "[{}] policy thread started step_dt={:.3f}s",
+                    getStateString(),
+                    env->step_dt);
 
-            while (policy_thread_running)
-            {
-                env->step();
+                while (policy_thread_running)
+                {
+                    env->step();
+                    log_policy_diagnostics();
 
-                // Sleep
-                std::this_thread::sleep_until(sleepTill);
-                sleepTill += dt;
+                    // Sleep
+                    std::this_thread::sleep_until(sleepTill);
+                    sleepTill += dt;
+                }
+            } catch (const std::exception& e) {
+                policy_faulted_ = true;
+                policy_thread_running = false;
+                spdlog::error(
+                    "[{}] policy thread stopped: {}",
+                    getStateString(),
+                    e.what());
             }
         });
     }
@@ -78,6 +95,11 @@ public:
     }
 
 private:
+    void configure_diagnostics();
+    void log_policy_diagnostics();
+    bool use_stand_hold_target() const;
+    std::vector<float> stand_hold_target() const;
+
     static float vector_value_or(
         const std::vector<float>& values,
         const size_t index,
@@ -181,6 +203,11 @@ private:
 
         entry_posture_t0_ = std::chrono::steady_clock::now();
         entry_posture_active_ = true;
+        spdlog::info(
+            "[{}] entry posture duration={:.2f}s active_joints={}",
+            getStateString(),
+            entry_posture_duration_s_,
+            joint_ids.size());
         return true;
     }
 
@@ -214,6 +241,7 @@ private:
 
         if (alpha >= 1.0f) {
             entry_posture_active_ = false;
+            spdlog::info("[{}] entry posture complete", getStateString());
             start_policy_thread();
         }
         return true;
@@ -223,11 +251,15 @@ private:
 
     std::thread policy_thread;
     bool policy_thread_running = false;
+    bool policy_faulted_ = false;
     bool entry_posture_active_ = false;
     float entry_posture_duration_s_ = 0.0f;
     std::chrono::steady_clock::time_point entry_posture_t0_;
     std::vector<float> entry_posture_q0_;
     std::vector<float> entry_posture_target_;
+    bool diagnostics_enabled_ = false;
+    long diagnostics_interval_steps_ = 25;
+    long diagnostics_warmup_steps_ = 10;
 };
 
 REGISTER_FSM(State_RLBase)

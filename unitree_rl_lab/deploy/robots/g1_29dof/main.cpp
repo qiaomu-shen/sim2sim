@@ -34,7 +34,12 @@ int main(int argc, char** argv)
     std::cout << "     G1-29dof Controller \n";
 
     // Unitree DDS Config
-    unitree::robot::ChannelFactory::Instance()->Init(0, vm["network"].as<std::string>());
+    auto network = vm["network"].as<std::string>();
+    if (network == "sim") {
+        spdlog::warn("--network=sim is an alias for the loopback interface; using --network=lo");
+        network = "lo";
+    }
+    unitree::robot::ChannelFactory::Instance()->Init(0, network);
 
     init_fsm_state();
 
@@ -49,8 +54,8 @@ int main(int argc, char** argv)
     fsm->start();
 
     std::cout << "Press [L2 + Up] to enter FixStand mode.\n";
-    std::cout << "And then press [R1 + X] to start the v0 velocity policy.\n";
-    std::cout << "Or press [R1 + Y] to start the LiDAR blindwalking policy.\n";
+    std::cout << "And then press [A] to start the v0 velocity policy.\n";
+    std::cout << "Or press [Y] to start the LiDAR blindwalking policy.\n";
 
     while (true)
     {

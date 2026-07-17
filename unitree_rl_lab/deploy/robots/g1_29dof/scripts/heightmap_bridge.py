@@ -198,7 +198,8 @@ def fuse_height_scan(
     # relative to pelvis.  Training target is pelvis_z - terrain_z - 0.5.
     height_obs[known] = -terrain_z[known] - 0.5
     np.clip(height_obs, -1.0, 1.0, out=height_obs)
-    return height_obs.reshape(-1), unknown_ratio
+    # IsaacLab grid_pattern(ordering="xy") keeps x as the fast axis.
+    return height_obs.T.reshape(-1), unknown_ratio
 
 
 def write_height_file(path: str, values: np.ndarray) -> None:
@@ -347,7 +348,7 @@ def parse_args(argv):
     parser.add_argument("--voxel", type=float, default=0.02)
     parser.add_argument("--min-points-per-cell", type=int, default=1)
     parser.add_argument("--percentile", type=float, default=90.0)
-    parser.add_argument("--fill-value", type=float, default=0.35)
+    parser.add_argument("--fill-value", type=float, default=0.28)
     parser.add_argument("--pelvis-height-nominal", type=float, default=0.793)
     parser.add_argument(
         "--lidar-xyz",

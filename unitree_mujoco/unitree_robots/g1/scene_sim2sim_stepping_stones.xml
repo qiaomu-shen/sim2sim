@@ -14,20 +14,31 @@
   </asset>
   <worldbody>
     <light pos="0 0 3" dir="0 0 -1" directional="true" />
-    <geom name="floor" type="plane" size="0 0 0.05" material="groundplane" friction="0.8 0.02 0.001" />
-    <geom name="stone_01" type="box" pos="1.72 0 -0.01" size="0.17 0.205 0.09" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_02" type="box" pos="2.24 0.18 0.01" size="0.19 0.22 0.11" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_03" type="box" pos="2.76 -0.16 -0.02" size="0.21 0.19 0.08" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_04" type="box" pos="3.28 0.1 0.025" size="0.17 0.205 0.125" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_05" type="box" pos="3.8 -0.2 0" size="0.19 0.22 0.1" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_06" type="box" pos="4.32 0.04 0.04" size="0.21 0.19 0.14" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_07" type="box" pos="4.84 0.21 -0.005" size="0.17 0.205 0.095" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_08" type="box" pos="5.36 -0.08 -0.01" size="0.19 0.22 0.09" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_09" type="box" pos="5.88 0 0.01" size="0.21 0.19 0.11" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_10" type="box" pos="6.4 0.18 -0.02" size="0.17 0.205 0.08" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_11" type="box" pos="6.92 -0.16 0.025" size="0.19 0.22 0.125" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_12" type="box" pos="7.44 0.1 0" size="0.21 0.19 0.1" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_13" type="box" pos="7.96 -0.2 0.04" size="0.17 0.205 0.14" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
-    <geom name="stone_14" type="box" pos="8.48 0.04 -0.005" size="0.19 0.22 0.095" quat="1 0 0 0" rgba="0.78 0.52 0.24 1" friction="0.8 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="under_platform" type="box" pos="15.0 0 -1.1" size="15.5 1.5 0.025"
+      material="groundplane" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="start_platform" type="box" pos="0 0 -0.075" size="0.5 0.375 0.075"
+      rgba="0.32 0.44 0.48 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_01" type="box" pos="0.80 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_02" type="box" pos="1.24 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_03" type="box" pos="1.66 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_04" type="box" pos="2.12 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_05" type="box" pos="2.53 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_06" type="box" pos="2.98 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_07" type="box" pos="3.41 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_08" type="box" pos="3.88 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_09" type="box" pos="4.30 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_10" type="box" pos="4.76 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_11" type="box" pos="5.20 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_12" type="box" pos="5.68 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_13" type="box" pos="6.11 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_14" type="box" pos="6.58 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_15" type="box" pos="7.03 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_16" type="box" pos="7.52 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_17" type="box" pos="7.96 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_18" type="box" pos="8.44 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_19" type="box" pos="8.90 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="stone_20" type="box" pos="9.40 0 -0.075" size="0.15 0.375 0.075" rgba="0.78 0.52 0.24 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
+    <geom name="end_platform" type="box" pos="19.55 0 -0.075" size="10.0 0.375 0.075"
+      rgba="0.32 0.44 0.48 1" friction="1.0 0.02 0.001" contype="1" conaffinity="1" />
   </worldbody>
 </mujoco>

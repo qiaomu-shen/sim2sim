@@ -6,8 +6,12 @@
 #include "isaaclab/envs/manager_based_rl_env.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <chrono>
+#include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -119,6 +123,9 @@ REGISTER_OBSERVATION(height_scan)
 {
     int size = 121;
     float fill_value = 0.0f;
+    float max_age_s = -1.0f;
+    bool require_bridge = false;
+    bool allow_missing_during_init = false;
     std::string bridge_file;
 
     try {
@@ -127,6 +134,15 @@ REGISTER_OBSERVATION(height_scan)
         }
         if (params["fill_value"].IsDefined()) {
             fill_value = params["fill_value"].as<float>();
+        }
+        if (params["max_age_s"].IsDefined()) {
+            max_age_s = params["max_age_s"].as<float>();
+        }
+        if (params["require_bridge"].IsDefined()) {
+            require_bridge = params["require_bridge"].as<bool>();
+        }
+        if (params["allow_missing_during_init"].IsDefined()) {
+            allow_missing_during_init = params["allow_missing_during_init"].as<bool>();
         }
         if (params["bridge_file"].IsDefined()) {
             bridge_file = params["bridge_file"].as<std::string>();
@@ -140,7 +156,30 @@ REGISTER_OBSERVATION(height_scan)
     } catch (const std::exception&) {
     }
 
+    const auto fallback = [&](const std::string& reason) -> std::vector<float> {
+        const bool init_fallback_allowed =
+            allow_missing_during_init && env != nullptr && env->initializing_observation_manager;
+        if (require_bridge && !init_fallback_allowed) {
+            throw std::runtime_error("height_scan bridge required but unavailable: " + reason);
+        }
+        return std::vector<float>(std::max(0, size), fill_value);
+    };
+
     if (!bridge_file.empty()) {
+        if (max_age_s >= 0.0f) {
+            try {
+                const auto write_time = std::filesystem::last_write_time(bridge_file);
+                const auto now = std::filesystem::file_time_type::clock::now();
+                const float age_s =
+                    std::chrono::duration<float>(now - write_time).count();
+                if (age_s > max_age_s) {
+                    return fallback("stale file " + bridge_file);
+                }
+            } catch (const std::exception&) {
+                return fallback("cannot stat " + bridge_file);
+            }
+        }
+
         std::ifstream input(bridge_file, std::ios::binary);
         if (input) {
             std::string header;
@@ -159,10 +198,12 @@ REGISTER_OBSERVATION(height_scan)
                     }
                 }
             }
+            return fallback("invalid file " + bridge_file);
         }
+        return fallback("cannot open " + bridge_file);
     }
 
-    return std::vector<float>(std::max(0, size), fill_value);
+    return fallback("bridge_file is empty");
 }
 
 REGISTER_OBSERVATION(velocity_commands)
@@ -171,17 +212,58 @@ REGISTER_OBSERVATION(velocity_commands)
     auto & joystick = env->robot->data.joystick;
 
     const auto cfg = env->cfg["commands"]["base_velocity"]["ranges"];
-
-    obs[0] = std::clamp(joystick->ly(), cfg["lin_vel_x"][0].as<float>(), cfg["lin_vel_x"][1].as<float>());
-    obs[1] = std::clamp(-joystick->lx(), cfg["lin_vel_y"][0].as<float>(), cfg["lin_vel_y"][1].as<float>());
-    obs[2] = std::clamp(-joystick->rx(), cfg["ang_vel_z"][0].as<float>(), cfg["ang_vel_z"][1].as<float>());
-
     const float deadzone =
         env->cfg["commands"]["base_velocity"]["deadzone"].as<float>(0.0f);
+    const bool zero_on_deadzone =
+        env->cfg["commands"]["base_velocity"]["zero_command_on_deadzone"].as<bool>(false);
+    const bool snap_to_limit =
+        env->cfg["commands"]["base_velocity"]["snap_to_limit_on_input"].as<bool>(false);
+    const bool keep_last_nonzero_on_zero =
+        env->cfg["commands"]["base_velocity"]["keep_last_nonzero_on_zero_command"].as<bool>(false);
+
+    const float raw_x = joystick->ly();
+    const float raw_y = -joystick->lx();
+    const float raw_yaw = -joystick->rx();
+
+    if (zero_on_deadzone &&
+        std::abs(raw_x) < deadzone &&
+        std::abs(raw_y) < deadzone &&
+        std::abs(raw_yaw) < deadzone) {
+        if (keep_last_nonzero_on_zero && env->has_last_nonzero_base_velocity_command) {
+            return std::vector<float>(
+                env->last_nonzero_base_velocity_command.begin(),
+                env->last_nonzero_base_velocity_command.end());
+        }
+        return obs;
+    }
+
+    const std::array<float, 3> raw = {raw_x, raw_y, raw_yaw};
+    const std::array<const char*, 3> keys = {"lin_vel_x", "lin_vel_y", "ang_vel_z"};
+    for (size_t i = 0; i < obs.size(); ++i) {
+        const float lower = cfg[keys[i]][0].as<float>();
+        const float upper = cfg[keys[i]][1].as<float>();
+        if (snap_to_limit) {
+            if (raw[i] > deadzone && upper > 0.0f) {
+                obs[i] = upper;
+            } else if (raw[i] < -deadzone && lower < 0.0f) {
+                obs[i] = lower;
+            }
+        } else {
+            obs[i] = std::clamp(raw[i], lower, upper);
+        }
+    }
+
     for (float & command : obs) {
         if (std::abs(command) < deadzone) {
             command = 0.0f;
         }
+    }
+
+    if (std::abs(obs[0]) >= deadzone ||
+        std::abs(obs[1]) >= deadzone ||
+        std::abs(obs[2]) >= deadzone) {
+        env->last_nonzero_base_velocity_command = {obs[0], obs[1], obs[2]};
+        env->has_last_nonzero_base_velocity_command = true;
     }
 
     return obs;

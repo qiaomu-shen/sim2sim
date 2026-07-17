@@ -34,12 +34,47 @@ public:
         if(!cfg["clip"].IsNull()) {
             _clip = cfg["clip"].as<std::vector<std::vector<float> >>();
         }
+        if(cfg["raw_clip"] && !cfg["raw_clip"].IsNull()) {
+            const auto raw_clip = cfg["raw_clip"];
+            if(raw_clip.IsSequence() && raw_clip.size() == 2 &&
+               raw_clip[0].IsScalar() && raw_clip[1].IsScalar()) {
+                _raw_clip.push_back({raw_clip[0].as<float>(), raw_clip[1].as<float>()});
+            } else {
+                _raw_clip = raw_clip.as<std::vector<std::vector<float> >>();
+            }
+        }
+        if(cfg["raw_filter_alpha"] && !cfg["raw_filter_alpha"].IsNull()) {
+            _raw_filter_alpha = std::clamp(
+                cfg["raw_filter_alpha"].as<float>(),
+                0.0f,
+                0.999f);
+        }
     }
 
     virtual void process_actions(std::vector<float> actions)
     {
         // TODO: modify action by joint_ids
         _raw_actions = actions;
+        if(!_raw_clip.empty()) {
+            for(int i(0); i<_action_dim; ++i) {
+                const auto& limits = _raw_clip.size() == 1 ? _raw_clip[0] : _raw_clip[i];
+                if(limits.size() >= 2) {
+                    _raw_actions[i] = std::clamp(_raw_actions[i], limits[0], limits[1]);
+                }
+            }
+        }
+        if(_raw_filter_alpha > 0.0f) {
+            if(!_raw_filter_initialized || _prev_raw_actions.size() != _raw_actions.size()) {
+                _prev_raw_actions = _raw_actions;
+                _raw_filter_initialized = true;
+            } else {
+                for(int i(0); i<_action_dim; ++i) {
+                    _raw_actions[i] = _raw_filter_alpha * _prev_raw_actions[i] +
+                        (1.0f - _raw_filter_alpha) * _raw_actions[i];
+                }
+                _prev_raw_actions = _raw_actions;
+            }
+        }
         for(int i(0); i<_action_dim; ++i)
         {
             if(!_scale.empty()) {
@@ -78,6 +113,8 @@ public:
     void reset()
     {
         _raw_actions.assign(_action_dim, 0.0f);
+        _prev_raw_actions.assign(_action_dim, 0.0f);
+        _raw_filter_initialized = false;
         process_actions(_raw_actions);
     }
 
@@ -86,11 +123,15 @@ protected:
     std::vector<int> _joint_ids;
 
     std::vector<float> _raw_actions;
+    std::vector<float> _prev_raw_actions;
     std::vector<float> _processed_actions;
 
     std::vector<float> _scale;
     std::vector<float> _offset;
     std::vector<std::vector<float> > _clip;
+    std::vector<std::vector<float> > _raw_clip;
+    float _raw_filter_alpha = 0.0f;
+    bool _raw_filter_initialized = false;
 };
 
 

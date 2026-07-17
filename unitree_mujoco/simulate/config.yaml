@@ -1,5 +1,5 @@
 robot: "g1"
-robot_scene: "scene.xml"
+robot_scene: "scene_sim2sim_stepping_stones.xml"
 
 domain_id: 0
 interface: "lo"
@@ -11,6 +11,13 @@ joystick_bits: 16
 
 print_scene_information: 1
 enable_elastic_band: 1
+elastic_band_auto_align: 1
+elastic_band_target_yaw_deg: 0.0
+elastic_band_align_kp_upright: 140.0
+elastic_band_align_kd_upright: 18.0
+elastic_band_align_kp_yaw: 80.0
+elastic_band_align_kd_yaw: 12.0
+elastic_band_align_torque_limit: 120.0
 
 enable_depth_bridge: 1
 depth_bridge_file: "/tmp/unitree_g1_front_depth.bin"
@@ -35,6 +42,8 @@ height_scan_resolution: 0.1
 height_scan_ray_start_z: 20.0
 height_scan_offset: 0.5
 height_scan_fps: 50.0
+height_scan_sensor_height_includes_ray_start_z: 0
+height_scan_value_clip: 2.0
 
 enable_touchdown_truth_log: 1
 touchdown_truth_log_file: "/home/ubt2204/work/111/TRY/sim2sim/deploy_lstm/robots/g1/log/touchdown_truth.csv"

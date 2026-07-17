@@ -1,44 +1,63 @@
-joint_ids_map: [0,6,12,1,7,15,22,2,8,16,23,3,9,17,24,4,10,18,25,5,11]
+# Policy/observation/action order follows the IsaacLab 29-DOF articulation
+# order with the eight locked joints removed, not SDK order:
+# L hip pitch, R hip pitch, waist yaw, L hip roll, R hip roll,
+# L hip yaw, R hip yaw, L knee, R knee, L shoulder pitch, R shoulder pitch,
+# L ankle pitch, R ankle pitch, L shoulder roll, R shoulder roll,
+# L ankle roll, R ankle roll, L shoulder yaw, R shoulder yaw,
+# L elbow, R elbow.
+joint_ids_map: [0,6,12,1,7,2,8,3,9,15,22,4,10,16,23,5,11,17,24,18,25]
 step_dt: 0.02
+use_training_step_semantics: true
 
 # Gains stay in Unitree SDK motor order because the stock unitree_rl_lab
-# controller applies them directly to motor_cmd()[sdk_id].
+# controller applies them directly to motor_cmd()[sdk_id]. These values match
+# the IsaacLab ImplicitActuatorCfg used by the 2026-07-09 training run.
 stiffness: [
-  40.2,99.1,40.2,99.1,28.5,28.5,
-  40.2,99.1,40.2,99.1,28.5,28.5,
-  40.2,200,200,
-  14.3,14.3,14.3,14.3,40,40,40,
-  14.3,14.3,14.3,14.3,40,40,40
+  100,100,100,150,40,40,
+  100,100,100,150,40,40,
+  100,200,200,
+  100,100,50,50,40,20,20,
+  100,100,50,50,40,20,20
 ]
 damping: [
-  2.6,6.3,2.6,6.3,1.8,1.8,
-  2.6,6.3,2.6,6.3,1.8,1.8,
-  2.6,5,5,
-  0.9,0.9,0.9,0.9,10,10,10,
-  0.9,0.9,0.9,0.9,10,10,10
+  2,2,2,4,2,2,
+  2,2,2,4,2,2,
+  2,4,4,
+  2,2,2,2,1,0.5,0.5,
+  2,2,2,2,1,0.5,0.5
 ]
 
-# IsaacLab 21-DOF articulation/action order:
-# L hip pitch, R hip pitch, waist yaw, L hip roll, R hip roll,
-# L/R shoulder pitch, L/R hip yaw, L/R shoulder roll, L/R knee,
-# L/R shoulder yaw, L/R ankle pitch, L/R elbow, L/R ankle roll.
-default_joint_pos: [-0.25,-0.25,0,0,0,0.07,0.07,0,0,0.24,-0.24,0.46,0.46,0,0,-0.25,-0.25,1.39,1.39,0,0]
+default_joint_pos: [-0.25,-0.25,0,0,0,0,0,0.46,0.46,0.07,0.07,-0.25,-0.25,0.24,-0.24,0,0,0,0,1.39,1.39]
 
 locked_joints:
   ids: [13,14,19,20,21,26,27,28]
   positions: [0,0,0,0,0,0,0,0]
-  stiffness: [200,200,40,40,40,40,40,40]
-  damping: [5,5,10,10,10,10,10,10]
+  stiffness: [200,200,40,20,20,40,20,20]
+  damping: [4,4,1,0.5,0.5,1,0.5,0.5]
 
 entry_posture:
   enabled: true
   duration_s: 1.0
+  positions: [-0.25,-0.25,0,0,0,0,0,0.46,0.46,0.07,0.07,-0.25,-0.25,0.24,-0.24,0,0,0,0,1.39,1.39]
+
+stand_hold:
+  use_on_zero_command: false
+  positions: [-0.25,-0.25,0,0,0,0,0,0.46,0.46,0.07,0.07,-0.25,-0.25,0.24,-0.24,0,0,0,0,1.39,1.39]
+
+diagnostics:
+  enabled: true
+  log_interval_steps: 25
+  warmup_steps: 10
 
 commands:
   base_velocity:
     deadzone: 0.05
+    zero_command_on_deadzone: true
+    hold_default_on_zero_command: false
+    keep_last_nonzero_on_zero_command: true
+    snap_to_limit_on_input: true
     ranges:
-      lin_vel_x: [0.0, 0.25]
+      lin_vel_x: [0.0, 0.6]
       lin_vel_y: [0.0, 0.0]
       ang_vel_z: [0.0, 0.0]
       heading: null
@@ -46,9 +65,11 @@ commands:
 actions:
   JointPositionAction:
     clip: null
+    raw_clip: null
+    raw_filter_alpha: 0.0
     joint_names: [.*]
     scale: [0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25]
-    offset: [-0.25,-0.25,0,0,0,0.07,0.07,0,0,0.24,-0.24,0.46,0.46,0,0,-0.25,-0.25,1.39,1.39,0,0]
+    offset: [-0.25,-0.25,0,0,0,0,0,0.46,0.46,0.07,0.07,-0.25,-0.25,0.24,-0.24,0,0,0,0,1.39,1.39]
     joint_ids: null
 
 observations:
@@ -83,7 +104,7 @@ observations:
     scale: null
     history_length: 1
   height_scan:
-    params: {size: 121, fill_value: 0.293, bridge_file: "/tmp/unitree_g1_height_scan.bin"}
+    params: {size: 121, max_age_s: 0.25, require_bridge: true, allow_missing_during_init: true, bridge_file: "/tmp/unitree_g1_height_scan.bin"}
     clip: [-1.0, 1.0]
     scale: null
     history_length: 1

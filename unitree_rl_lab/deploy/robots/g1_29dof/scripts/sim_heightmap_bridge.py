@@ -32,10 +32,10 @@ def build_scan(args: argparse.Namespace) -> list[float]:
     step = args.map_size / max(1, n - 1)
     values: list[float] = []
 
-    for ix in range(n):
-        x = -half + ix * step
-        for iy in range(n):
-            y = -half + iy * step
+    for iy in range(n):
+        y = -half + iy * step
+        for ix in range(n):
+            x = -half + ix * step
             terrain_h = 0.0
             if args.mode == "step":
                 terrain_h = args.height if x >= args.edge_x else 0.0
@@ -62,7 +62,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--flat-value",
         type=float,
-        default=0.293,
+        default=0.28,
         help="Policy height value for flat ground, roughly pelvis_z - ground_z - 0.5.",
     )
     parser.add_argument("--height", type=float, default=0.10, help="Terrain height in meters.")
