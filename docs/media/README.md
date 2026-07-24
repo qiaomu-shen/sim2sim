@@ -11,3 +11,8 @@
 
 The clip intentionally excludes the waiting/startup frames before the walk and
 the post-run endpoint frames after the useful traversal.
+
+## lidar_sim2sim_stable_walk.gif
+
+Auto-playing README preview generated from the MP4 clip at 12 FPS and 720 px
+width.

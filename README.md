@@ -13,9 +13,9 @@
 
 ## Sim2Sim 演示视频
 
-[![G1 lidar heightmap sim2sim stable walk](docs/media/lidar_sim2sim_stable_walk_poster.jpg)](docs/media/lidar_sim2sim_stable_walk.mp4)
+![G1 lidar heightmap sim2sim stable walk](docs/media/lidar_sim2sim_stable_walk.gif)
 
-视频文件：
+高清 MP4：
 `docs/media/lidar_sim2sim_stable_walk.mp4`
 
 这段是本分支的激光雷达 `height_scan` sim2sim 演示：G1-29DOF 在 MuJoCo 台阶场景中使用 lidar heightmap 输入完成稳定行走全程。原始录屏为
