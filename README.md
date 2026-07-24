@@ -24,9 +24,7 @@ sim2sim 部署、激光雷达高度图桥接和实机/仿真一致性调试。
 高清 MP4：`docs/media/lidar_sim2sim_stable_walk.mp4`
 
 这段是本分支的激光雷达 `height_scan` sim2sim 演示：G1-29DOF 在 MuJoCo
-台阶场景中使用 lidar heightmap 输入稳定跨越石块序列。原始录屏为
-`simplescreenrecorder-2026-07-17_14.14.42.mp4`，已检查并只保留有效段
-`7.2s-16.25s`；`7s` 前主要是起步/等待，`16.3s` 后开始进入终点平台和不稳姿态，未放入 README 演示视频。
+台阶场景中使用 lidar heightmap 输入稳定跨越石块序列。演示视频已裁剪为中心视角，聚焦机器人和 stepstone 路径。
 
 ### 主要目录
 
@@ -111,10 +109,8 @@ HD MP4: `docs/media/lidar_sim2sim_stable_walk.mp4`
 
 This lidar `height_scan` sim2sim demo shows the G1-29DOF robot stably crossing
 the stepping-stone sequence in the MuJoCo stair scene using lidar heightmap
-input. The source recording is `simplescreenrecorder-2026-07-17_14.14.42.mp4`.
-After inspection, only `7.2s-16.25s` is kept. Frames before `7s` are mostly
-startup/waiting, and frames after `16.3s` start to enter the end platform and
-unstable finish posture, so they are excluded from the README demo.
+input. The demo video is cropped to a centered view focused on the robot and
+the stepstone path.
 
 ### Main Directories
 
