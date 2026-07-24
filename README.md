@@ -28,3 +28,10 @@ Check the README on the branch you are working on before running an experiment.
 Robot deployment should always confirm emergency stop, network interface,
 DDS domain, joint order, policy observation order, and locked-joint settings
 before enabling torque.
+
+## License
+
+Original workspace code, documentation, scripts, and included demo media are
+licensed under the MIT License unless otherwise noted. See `LICENSE`.
+Vendored third-party components keep their own licenses; see
+`THIRD_PARTY_NOTICES.md` and the license files in each third-party directory.
