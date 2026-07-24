@@ -11,6 +11,17 @@
 - 接入 Livox 点云到 11x11 `height_scan` 的高度图桥接。
 - 为平地、楼梯和跌倒 case 增加 MuJoCo/部署侧诊断输出。
 
+## Sim2Sim 演示视频
+
+[![G1 lidar heightmap sim2sim stable walk](docs/media/lidar_sim2sim_stable_walk_poster.jpg)](docs/media/lidar_sim2sim_stable_walk.mp4)
+
+视频文件：
+`docs/media/lidar_sim2sim_stable_walk.mp4`
+
+这段是本分支的激光雷达 `height_scan` sim2sim 演示：G1-29DOF 在 MuJoCo 台阶场景中使用 lidar heightmap 输入完成稳定行走全程。原始录屏为
+`simplescreenrecorder-2026-07-17_14.14.42.mp4`，已检查并只保留稳定有效段
+`7.2s-17.8s`；`7s` 前主要是起步/等待，`18s` 后进入终点姿态，未放入 README 演示视频。
+
 ## 主要目录
 
 - `unitree_rl_lab/deploy/robots/g1_29dof/`：G1-29DOF 控制器、策略配置、heightmap bridge 和诊断代码。
@@ -58,3 +69,9 @@ cd /home/ubt2204/work/111/TRY/sim2sim/unitree_rl_lab/deploy/robots/g1_29dof
 ## 注意
 
 这是机器人部署调试工作区。实机测试前需要确认急停、吊挂/保护措施、网络 domain、DDS topic 和策略/关节顺序完全匹配。
+
+## License
+
+本工作区原创代码、文档、脚本和演示媒体默认使用 MIT License，见
+`LICENSE`。第三方组件保留各自许可证，见 `THIRD_PARTY_NOTICES.md` 和各
+third-party 目录内的 license 文件。
