@@ -1,5 +1,5 @@
 robot: "g1"
-robot_scene: "scene_sim2sim_stepping_stones.xml"
+robot_scene: "scene_sim2sim_stairs_08.xml"
 
 domain_id: 0
 interface: "lo"
@@ -34,7 +34,8 @@ depth_pos_y: 0.0
 depth_pos_z: 0.45
 
 enable_height_scan_bridge: 1
-height_scan_bridge_file: "/tmp/unitree_g1_height_scan.bin"
+height_scan_bridge_file: "/tmp/unitree_g1_lidar_blindwalking_model2600_height_scan.bin"
+height_scan_mode: "estimated"   # ideal | estimated
 height_scan_body: "pelvis"
 height_scan_size_x: 1.0
 height_scan_size_y: 1.0
@@ -44,6 +45,38 @@ height_scan_offset: 0.5
 height_scan_fps: 50.0
 height_scan_sensor_height_includes_ray_start_z: 0
 height_scan_value_clip: 2.0
+height_scan_local_x_offset: 0.0
+
+# Estimated mode: simulate a head LiDAR blind-zone pipeline.  The policy reads
+# the estimated map from height_scan_bridge_file; these debug files mirror it.
+height_scan_estimator_visible_x_min: -0.70
+height_scan_estimator_visible_x_max: 1.15
+height_scan_estimator_visible_y_min: -0.70
+height_scan_estimator_visible_y_max: 0.70
+height_scan_estimator_blind_x_min: -0.30
+height_scan_estimator_blind_x_max: 0.35
+height_scan_estimator_blind_y_min: -0.32
+height_scan_estimator_blind_y_max: 0.32
+height_scan_estimator_sample_resolution: 0.03
+height_scan_estimator_memory_resolution: 0.025
+height_scan_estimator_memory_max_age: 2.0
+height_scan_estimator_memory_max_distance: 2.5
+height_scan_estimator_query_radius: 0.065
+height_scan_estimator_query_percentile: 90.0
+height_scan_estimator_nominal_pelvis_height: 0.793
+height_scan_estimator_support_x_min: -0.24
+height_scan_estimator_support_x_max: 0.34
+height_scan_estimator_support_y_min: -0.28
+height_scan_estimator_support_y_max: 0.28
+height_scan_estimator_support_percentile: 88.0
+height_scan_estimator_base_z_rise_rate: 1.10
+height_scan_estimator_base_z_fall_rate: 0.45
+height_scan_estimator_fill_value: 0.28
+height_scan_estimator_use_last_for_unknown: 1
+height_scan_estimator_use_true_xy_yaw: 1
+height_scan_debug_write: 1
+height_scan_debug_csv_file: "/tmp/unitree_g1_height_scan_estimated.csv"
+height_scan_debug_ppm_file: "/tmp/unitree_g1_height_scan_estimated.ppm"
 
 enable_touchdown_truth_log: 1
 touchdown_truth_log_file: "/home/ubt2204/work/111/TRY/sim2sim/deploy_lstm/robots/g1/log/touchdown_truth.csv"

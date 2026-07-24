@@ -51,6 +51,40 @@ std::string head_values(const std::vector<float>& values, const size_t count)
     return out.str();
 }
 
+std::string leg_pair_values(const std::vector<float>& values)
+{
+    const std::array<std::pair<size_t, size_t>, 6> pairs = {{
+        {0, 1},    // hip pitch
+        {3, 4},    // hip roll
+        {7, 8},    // hip yaw
+        {11, 12},  // knee
+        {15, 16},  // ankle pitch
+        {19, 20},  // ankle roll
+    }};
+    const std::array<const char*, 6> names = {{
+        "hp", "hr", "hy", "kn", "ap", "ar"
+    }};
+
+    std::ostringstream out;
+    out << "[";
+    for (size_t i = 0; i < pairs.size(); ++i) {
+        if (i != 0) {
+            out << ",";
+        }
+        const auto [left, right] = pairs[i];
+        out << names[i] << "=(";
+        if (left < values.size() && right < values.size()) {
+            out << std::fixed << std::setprecision(3)
+                << values[left] << "," << values[right];
+        } else {
+            out << "nan,nan";
+        }
+        out << ")";
+    }
+    out << "]";
+    return out.str();
+}
+
 }
 
 namespace isaaclab
@@ -219,7 +253,8 @@ void State_RLBase::log_policy_diagnostics()
         "raw[min,max,mean]=[{:.3f},{:.3f},{:.3f}] q_target[min,max]=[{:.3f},{:.3f}] "
         "q_rel[min,max]=[{:.3f},{:.3f}] q_vel[min,max]=[{:.3f},{:.3f}] "
         "gravity=[{:.3f},{:.3f},{:.3f}] "
-        "gyro=[{:.3f},{:.3f},{:.3f}] raw0={} qtarget0={} qrel0={} qvel0={}",
+        "gyro=[{:.3f},{:.3f},{:.3f}] raw0={} qtarget0={} qrel0={} qvel0={} "
+        "raw_leg={} qtarget_leg={} qrel_leg={} qvel_leg={}",
         getStateString(),
         step,
         joystick ? joystick->ly() : 0.0f,
@@ -247,5 +282,9 @@ void State_RLBase::log_policy_diagnostics()
         head_values(raw_action, 6),
         head_values(q_target, 6),
         head_values(q_rel, 6),
-        head_values(q_vel, 6));
+        head_values(q_vel, 6),
+        leg_pair_values(raw_action),
+        leg_pair_values(q_target),
+        leg_pair_values(q_rel),
+        leg_pair_values(q_vel));
 }

@@ -1,11 +1,7 @@
-# Policy/observation/action order follows the IsaacLab 29-DOF articulation
-# order with the eight locked joints removed, not SDK order:
-# L hip pitch, R hip pitch, waist yaw, L hip roll, R hip roll,
-# L hip yaw, R hip yaw, L knee, R knee, L shoulder pitch, R shoulder pitch,
-# L ankle pitch, R ankle pitch, L shoulder roll, R shoulder roll,
-# L ankle roll, R ankle roll, L shoulder yaw, R shoulder yaw,
-# L elbow, R elbow.
-joint_ids_map: [0,6,12,1,7,2,8,3,9,15,22,4,10,16,23,5,11,17,24,18,25]
+# Policy/observation/action order is the original 21-DOF Isaac policy order.
+# The 29-DOF asset only adds locked waist roll/pitch and wrists; it must not
+# renumber the 21 active action slots.
+joint_ids_map: [0,6,12,1,7,15,22,2,8,16,23,3,9,17,24,4,10,18,25,5,11]
 step_dt: 0.02
 use_training_step_semantics: true
 
@@ -27,7 +23,7 @@ damping: [
   2,2,2,2,1,0.5,0.5
 ]
 
-default_joint_pos: [-0.25,-0.25,0,0,0,0,0,0.46,0.46,0.07,0.07,-0.25,-0.25,0.24,-0.24,0,0,0,0,1.39,1.39]
+default_joint_pos: [-0.25,-0.25,0,0,0,0.07,0.07,0,0,0.24,-0.24,0.46,0.46,0,0,-0.25,-0.25,1.39,1.39,0,0]
 
 locked_joints:
   ids: [13,14,19,20,21,26,27,28]
@@ -38,11 +34,11 @@ locked_joints:
 entry_posture:
   enabled: true
   duration_s: 1.0
-  positions: [-0.25,-0.25,0,0,0,0,0,0.46,0.46,0.07,0.07,-0.25,-0.25,0.24,-0.24,0,0,0,0,1.39,1.39]
+  positions: [-0.25,-0.25,0,0,0,0.07,0.07,0,0,0.24,-0.24,0.46,0.46,0,0,-0.25,-0.25,1.39,1.39,0,0]
 
 stand_hold:
   use_on_zero_command: false
-  positions: [-0.25,-0.25,0,0,0,0,0,0.46,0.46,0.07,0.07,-0.25,-0.25,0.24,-0.24,0,0,0,0,1.39,1.39]
+  positions: [-0.25,-0.25,0,0,0,0.07,0.07,0,0,0.24,-0.24,0.46,0.46,0,0,-0.25,-0.25,1.39,1.39,0,0]
 
 diagnostics:
   enabled: true
@@ -69,7 +65,7 @@ actions:
     raw_filter_alpha: 0.0
     joint_names: [.*]
     scale: [0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25]
-    offset: [-0.25,-0.25,0,0,0,0,0,0.46,0.46,0.07,0.07,-0.25,-0.25,0.24,-0.24,0,0,0,0,1.39,1.39]
+    offset: [-0.25,-0.25,0,0,0,0.07,0.07,0,0,0.24,-0.24,0.46,0.46,0,0,-0.25,-0.25,1.39,1.39,0,0]
     joint_ids: null
 
 observations:
@@ -104,7 +100,20 @@ observations:
     scale: null
     history_length: 1
   height_scan:
-    params: {size: 121, max_age_s: 0.25, require_bridge: true, allow_missing_during_init: true, bridge_file: "/tmp/unitree_g1_height_scan.bin"}
+    params:
+      size: 121
+      fill_value: 0.28
+      max_age_s: 0.25
+      require_bridge: true
+      allow_missing_during_init: true
+      bridge_file: "/tmp/unitree_g1_lidar_blindwalking_model2600_height_scan.bin"
     clip: [-1.0, 1.0]
     scale: null
     history_length: 1
+
+heightmap_bridge:
+  script: "scripts/run_lidar_blindwalking_model2600_heightmap_bridge.sh"
+  output: "/tmp/unitree_g1_lidar_blindwalking_model2600_height_scan.bin"
+  pointcloud_topic: "/livox/lidar"
+  default_motion_source: "odom"
+  debug_csv: "/tmp/unitree_g1_lidar_blindwalking_model2600_height_scan.csv"

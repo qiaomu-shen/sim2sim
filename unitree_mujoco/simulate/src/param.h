@@ -49,6 +49,7 @@ inline struct SimulationConfig
 
     int enable_height_scan_bridge = 1;
     std::string height_scan_bridge_file = "/tmp/unitree_g1_height_scan.bin";
+    std::string height_scan_mode = "ideal";
     std::string height_scan_body = "pelvis";
     double height_scan_size_x = 1.0;
     double height_scan_size_y = 1.0;
@@ -58,6 +59,36 @@ inline struct SimulationConfig
     double height_scan_fps = 50.0;
     int height_scan_sensor_height_includes_ray_start_z = 0;
     double height_scan_value_clip = 2.0;
+    double height_scan_local_x_offset = 0.0;
+
+    double height_scan_estimator_visible_x_min = 0.12;
+    double height_scan_estimator_visible_x_max = 1.10;
+    double height_scan_estimator_visible_y_min = -0.55;
+    double height_scan_estimator_visible_y_max = 0.55;
+    double height_scan_estimator_blind_x_min = -0.30;
+    double height_scan_estimator_blind_x_max = 0.35;
+    double height_scan_estimator_blind_y_min = -0.32;
+    double height_scan_estimator_blind_y_max = 0.32;
+    double height_scan_estimator_sample_resolution = 0.035;
+    double height_scan_estimator_memory_resolution = 0.025;
+    double height_scan_estimator_memory_max_age = 2.0;
+    double height_scan_estimator_memory_max_distance = 2.5;
+    double height_scan_estimator_query_radius = 0.075;
+    double height_scan_estimator_query_percentile = 90.0;
+    double height_scan_estimator_nominal_pelvis_height = 0.793;
+    double height_scan_estimator_support_x_min = -0.24;
+    double height_scan_estimator_support_x_max = 0.34;
+    double height_scan_estimator_support_y_min = -0.28;
+    double height_scan_estimator_support_y_max = 0.28;
+    double height_scan_estimator_support_percentile = 82.0;
+    double height_scan_estimator_base_z_rise_rate = 1.10;
+    double height_scan_estimator_base_z_fall_rate = 0.45;
+    double height_scan_estimator_fill_value = 0.28;
+    int height_scan_estimator_use_last_for_unknown = 1;
+    int height_scan_estimator_use_true_xy_yaw = 1;
+    int height_scan_debug_write = 1;
+    std::string height_scan_debug_csv_file = "/tmp/unitree_g1_height_scan_estimated.csv";
+    std::string height_scan_debug_ppm_file = "/tmp/unitree_g1_height_scan_estimated.ppm";
 
     int enable_touchdown_truth_log = 1;
     std::string touchdown_truth_log_file =
@@ -109,6 +140,7 @@ inline struct SimulationConfig
             if (cfg["depth_pos_z"]) depth_pos_z = cfg["depth_pos_z"].as<double>();
             if (cfg["enable_height_scan_bridge"]) enable_height_scan_bridge = cfg["enable_height_scan_bridge"].as<int>();
             if (cfg["height_scan_bridge_file"]) height_scan_bridge_file = cfg["height_scan_bridge_file"].as<std::string>();
+            if (cfg["height_scan_mode"]) height_scan_mode = cfg["height_scan_mode"].as<std::string>();
             if (cfg["height_scan_body"]) height_scan_body = cfg["height_scan_body"].as<std::string>();
             if (cfg["height_scan_size_x"]) height_scan_size_x = cfg["height_scan_size_x"].as<double>();
             if (cfg["height_scan_size_y"]) height_scan_size_y = cfg["height_scan_size_y"].as<double>();
@@ -121,6 +153,35 @@ inline struct SimulationConfig
                     cfg["height_scan_sensor_height_includes_ray_start_z"].as<int>();
             }
             if (cfg["height_scan_value_clip"]) height_scan_value_clip = cfg["height_scan_value_clip"].as<double>();
+            if (cfg["height_scan_local_x_offset"]) height_scan_local_x_offset = cfg["height_scan_local_x_offset"].as<double>();
+            if (cfg["height_scan_estimator_visible_x_min"]) height_scan_estimator_visible_x_min = cfg["height_scan_estimator_visible_x_min"].as<double>();
+            if (cfg["height_scan_estimator_visible_x_max"]) height_scan_estimator_visible_x_max = cfg["height_scan_estimator_visible_x_max"].as<double>();
+            if (cfg["height_scan_estimator_visible_y_min"]) height_scan_estimator_visible_y_min = cfg["height_scan_estimator_visible_y_min"].as<double>();
+            if (cfg["height_scan_estimator_visible_y_max"]) height_scan_estimator_visible_y_max = cfg["height_scan_estimator_visible_y_max"].as<double>();
+            if (cfg["height_scan_estimator_blind_x_min"]) height_scan_estimator_blind_x_min = cfg["height_scan_estimator_blind_x_min"].as<double>();
+            if (cfg["height_scan_estimator_blind_x_max"]) height_scan_estimator_blind_x_max = cfg["height_scan_estimator_blind_x_max"].as<double>();
+            if (cfg["height_scan_estimator_blind_y_min"]) height_scan_estimator_blind_y_min = cfg["height_scan_estimator_blind_y_min"].as<double>();
+            if (cfg["height_scan_estimator_blind_y_max"]) height_scan_estimator_blind_y_max = cfg["height_scan_estimator_blind_y_max"].as<double>();
+            if (cfg["height_scan_estimator_sample_resolution"]) height_scan_estimator_sample_resolution = cfg["height_scan_estimator_sample_resolution"].as<double>();
+            if (cfg["height_scan_estimator_memory_resolution"]) height_scan_estimator_memory_resolution = cfg["height_scan_estimator_memory_resolution"].as<double>();
+            if (cfg["height_scan_estimator_memory_max_age"]) height_scan_estimator_memory_max_age = cfg["height_scan_estimator_memory_max_age"].as<double>();
+            if (cfg["height_scan_estimator_memory_max_distance"]) height_scan_estimator_memory_max_distance = cfg["height_scan_estimator_memory_max_distance"].as<double>();
+            if (cfg["height_scan_estimator_query_radius"]) height_scan_estimator_query_radius = cfg["height_scan_estimator_query_radius"].as<double>();
+            if (cfg["height_scan_estimator_query_percentile"]) height_scan_estimator_query_percentile = cfg["height_scan_estimator_query_percentile"].as<double>();
+            if (cfg["height_scan_estimator_nominal_pelvis_height"]) height_scan_estimator_nominal_pelvis_height = cfg["height_scan_estimator_nominal_pelvis_height"].as<double>();
+            if (cfg["height_scan_estimator_support_x_min"]) height_scan_estimator_support_x_min = cfg["height_scan_estimator_support_x_min"].as<double>();
+            if (cfg["height_scan_estimator_support_x_max"]) height_scan_estimator_support_x_max = cfg["height_scan_estimator_support_x_max"].as<double>();
+            if (cfg["height_scan_estimator_support_y_min"]) height_scan_estimator_support_y_min = cfg["height_scan_estimator_support_y_min"].as<double>();
+            if (cfg["height_scan_estimator_support_y_max"]) height_scan_estimator_support_y_max = cfg["height_scan_estimator_support_y_max"].as<double>();
+            if (cfg["height_scan_estimator_support_percentile"]) height_scan_estimator_support_percentile = cfg["height_scan_estimator_support_percentile"].as<double>();
+            if (cfg["height_scan_estimator_base_z_rise_rate"]) height_scan_estimator_base_z_rise_rate = cfg["height_scan_estimator_base_z_rise_rate"].as<double>();
+            if (cfg["height_scan_estimator_base_z_fall_rate"]) height_scan_estimator_base_z_fall_rate = cfg["height_scan_estimator_base_z_fall_rate"].as<double>();
+            if (cfg["height_scan_estimator_fill_value"]) height_scan_estimator_fill_value = cfg["height_scan_estimator_fill_value"].as<double>();
+            if (cfg["height_scan_estimator_use_last_for_unknown"]) height_scan_estimator_use_last_for_unknown = cfg["height_scan_estimator_use_last_for_unknown"].as<int>();
+            if (cfg["height_scan_estimator_use_true_xy_yaw"]) height_scan_estimator_use_true_xy_yaw = cfg["height_scan_estimator_use_true_xy_yaw"].as<int>();
+            if (cfg["height_scan_debug_write"]) height_scan_debug_write = cfg["height_scan_debug_write"].as<int>();
+            if (cfg["height_scan_debug_csv_file"]) height_scan_debug_csv_file = cfg["height_scan_debug_csv_file"].as<std::string>();
+            if (cfg["height_scan_debug_ppm_file"]) height_scan_debug_ppm_file = cfg["height_scan_debug_ppm_file"].as<std::string>();
             if (cfg["enable_touchdown_truth_log"]) enable_touchdown_truth_log = cfg["enable_touchdown_truth_log"].as<int>();
             if (cfg["touchdown_truth_log_file"]) touchdown_truth_log_file = cfg["touchdown_truth_log_file"].as<std::string>();
             if (cfg["touchdown_truth_use_latest_run_dir"]) touchdown_truth_use_latest_run_dir = cfg["touchdown_truth_use_latest_run_dir"].as<int>();

@@ -26,15 +26,20 @@
 #include <cstring>
 #include <ctime>
 #include <cmath>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <new>
+#include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <mujoco/mujoco.h>
@@ -803,6 +808,7 @@ namespace
       {
         model_ = model;
         body_id_ = ResolveBody(model);
+        ResetEstimator();
         last_write_time_ = -1.0e9;
       }
 
@@ -813,13 +819,37 @@ namespace
       }
 
       std::vector<float> values;
-      RenderHeightScan(model, data, values);
+      std::vector<uint8_t> unknown;
+      if (param::config.height_scan_mode == "estimated")
+      {
+        RenderEstimatedHeightScan(model, data, values, unknown);
+      }
+      else
+      {
+        RenderIdealHeightScan(model, data, values, unknown);
+      }
       WriteHeightScanFile(values);
+      WriteDebugFiles(data->time, values, unknown);
 
       last_write_time_ = data->time;
     }
 
   private:
+    struct Pose2D
+    {
+      double x = 0.0;
+      double y = 0.0;
+      double z = 0.0;
+      double yaw = 0.0;
+    };
+
+    struct TerrainCell
+    {
+      double z = 0.0;
+      double stamp = 0.0;
+      int count = 0;
+    };
+
     static int ResolveBody(const mjModel* model)
     {
       int body_id = mj_name2id(model, mjOBJ_BODY, param::config.height_scan_body.c_str());
@@ -850,10 +880,55 @@ namespace
       return std::max(1, static_cast<int>(std::floor(size / resolution + 0.5)) + 1);
     }
 
-    void RenderHeightScan(
+    static double Percentile(std::vector<double>& values, double percentile)
+    {
+      if (values.empty())
+      {
+        return std::numeric_limits<double>::quiet_NaN();
+      }
+      std::sort(values.begin(), values.end());
+      percentile = std::clamp(percentile, 0.0, 100.0);
+      const double pos = percentile * 0.01 * static_cast<double>(values.size() - 1);
+      const auto lo = static_cast<size_t>(std::floor(pos));
+      const auto hi = static_cast<size_t>(std::ceil(pos));
+      if (lo == hi)
+      {
+        return values[lo];
+      }
+      const double t = pos - static_cast<double>(lo);
+      return values[lo] * (1.0 - t) + values[hi] * t;
+    }
+
+    static Pose2D BodyPose(const mjData* data, int body_id)
+    {
+      Pose2D pose;
+      const mjtNum* xpos = data->xpos + 3 * body_id;
+      const mjtNum* xmat = data->xmat + 9 * body_id;
+      pose.x = static_cast<double>(xpos[0]);
+      pose.y = static_cast<double>(xpos[1]);
+      pose.z = static_cast<double>(xpos[2]);
+      pose.yaw = std::atan2(static_cast<double>(xmat[3]),
+                            static_cast<double>(xmat[0]));
+      return pose;
+    }
+
+    void ResetEstimator()
+    {
+      terrain_memory_.clear();
+      last_values_.clear();
+      last_unknown_.clear();
+      estimator_initialized_ = false;
+      last_estimator_time_ = -1.0e9;
+      last_estimator_z_time_ = -1.0e9;
+      last_support_z_ = std::numeric_limits<double>::quiet_NaN();
+      last_unknown_ratio_ = 1.0;
+    }
+
+    void RenderIdealHeightScan(
       const mjModel* model,
       const mjData* data,
-      std::vector<float>& values) const
+      std::vector<float>& values,
+      std::vector<uint8_t>& unknown) const
     {
       const int count_x = GridCount(param::config.height_scan_size_x,
                                     param::config.height_scan_resolution);
@@ -861,6 +936,7 @@ namespace
                                     param::config.height_scan_resolution);
       values.clear();
       values.reserve(static_cast<size_t>(count_x) * static_cast<size_t>(count_y));
+      unknown.assign(static_cast<size_t>(count_x) * static_cast<size_t>(count_y), 0);
 
       const mjtNum* xpos = data->xpos + 3 * body_id_;
       const mjtNum* xmat = data->xmat + 9 * body_id_;
@@ -898,6 +974,7 @@ namespace
             // A miss is unknown terrain. For sim testing, fill it as flat
             // ground instead of emitting 0.0, which looks like a false obstacle.
             hit_z = 0.0;
+            unknown[static_cast<size_t>(iy * count_x + ix)] = 1;
           }
 
           double value = sensor_height - hit_z - offset;
@@ -908,6 +985,300 @@ namespace
           values.push_back(static_cast<float>(value));
         }
       }
+    }
+
+    void RenderEstimatedHeightScan(
+      const mjModel* model,
+      const mjData* data,
+      std::vector<float>& values,
+      std::vector<uint8_t>& unknown)
+    {
+      const Pose2D true_pose = BodyPose(data, body_id_);
+      UpdateEstimatedPose(true_pose, data->time);
+      ObserveVisibleTerrain(model, data, est_pose_);
+      PruneTerrainMemory(est_pose_, data->time);
+      UpdateEstimatedBaseZ(data->time);
+      RenderFromMemory(data->time, values, unknown);
+      last_values_ = values;
+      last_unknown_ = unknown;
+    }
+
+    void UpdateEstimatedPose(const Pose2D& true_pose, double time)
+    {
+      if (!estimator_initialized_)
+      {
+        est_pose_.x = true_pose.x;
+        est_pose_.y = true_pose.y;
+        est_pose_.z = param::config.height_scan_estimator_nominal_pelvis_height;
+        est_pose_.yaw = true_pose.yaw;
+        estimator_initialized_ = true;
+        last_estimator_time_ = time;
+        return;
+      }
+
+      if (param::config.height_scan_estimator_use_true_xy_yaw != 0)
+      {
+        est_pose_.x = true_pose.x;
+        est_pose_.y = true_pose.y;
+        est_pose_.yaw = true_pose.yaw;
+      }
+      last_estimator_time_ = time;
+    }
+
+    std::pair<int, int> MemoryKey(double world_x, double world_y) const
+    {
+      const double res = std::max(1.0e-6, param::config.height_scan_estimator_memory_resolution);
+      return {
+        static_cast<int>(std::llround(world_x / res)),
+        static_cast<int>(std::llround(world_y / res))
+      };
+    }
+
+    std::pair<double, double> MemoryCellCenter(const std::pair<int, int>& key) const
+    {
+      const double res = std::max(1.0e-6, param::config.height_scan_estimator_memory_resolution);
+      return {static_cast<double>(key.first) * res,
+              static_cast<double>(key.second) * res};
+    }
+
+    void ObserveVisibleTerrain(
+      const mjModel* model,
+      const mjData* data,
+      const Pose2D& pose)
+    {
+      const double sample_resolution =
+        std::max(0.01, param::config.height_scan_estimator_sample_resolution);
+      const double x_min = param::config.height_scan_estimator_visible_x_min;
+      const double x_max = param::config.height_scan_estimator_visible_x_max;
+      const double y_min = param::config.height_scan_estimator_visible_y_min;
+      const double y_max = param::config.height_scan_estimator_visible_y_max;
+      const double cos_yaw = std::cos(pose.yaw);
+      const double sin_yaw = std::sin(pose.yaw);
+
+      for (double local_x = x_min; local_x <= x_max + 0.5 * sample_resolution;
+           local_x += sample_resolution)
+      {
+        for (double local_y = y_min; local_y <= y_max + 0.5 * sample_resolution;
+             local_y += sample_resolution)
+        {
+          const bool in_blind_zone =
+            local_x >= param::config.height_scan_estimator_blind_x_min &&
+            local_x <= param::config.height_scan_estimator_blind_x_max &&
+            local_y >= param::config.height_scan_estimator_blind_y_min &&
+            local_y <= param::config.height_scan_estimator_blind_y_max;
+          if (in_blind_zone)
+          {
+            continue;
+          }
+
+          const double world_x = pose.x + cos_yaw * local_x - sin_yaw * local_y;
+          const double world_y = pose.y + sin_yaw * local_x + cos_yaw * local_y;
+          mjtNum origin[3] = {
+            static_cast<mjtNum>(world_x),
+            static_cast<mjtNum>(world_y),
+            static_cast<mjtNum>(data->xpos[3 * body_id_ + 2] + param::config.height_scan_ray_start_z)
+          };
+          mjtNum ray[3] = {0, 0, -1};
+
+          double hit_z = 0.0;
+          if (!CastTerrainHitZ(model, data, origin, ray, hit_z))
+          {
+            continue;
+          }
+
+          const auto key = MemoryKey(world_x, world_y);
+          auto& cell = terrain_memory_[key];
+          if (data->time >= cell.stamp)
+          {
+            cell.z = hit_z;
+            cell.stamp = data->time;
+            cell.count = std::min(cell.count + 1, 1000000);
+          }
+        }
+      }
+    }
+
+    void PruneTerrainMemory(const Pose2D& pose, double time)
+    {
+      const double max_age = std::max(0.1, param::config.height_scan_estimator_memory_max_age);
+      const double max_dist = std::max(0.5, param::config.height_scan_estimator_memory_max_distance);
+      const double max_dist2 = max_dist * max_dist;
+
+      for (auto it = terrain_memory_.begin(); it != terrain_memory_.end();)
+      {
+        const auto [world_x, world_y] = MemoryCellCenter(it->first);
+        const double dx = world_x - pose.x;
+        const double dy = world_y - pose.y;
+        if (time - it->second.stamp > max_age || dx * dx + dy * dy > max_dist2)
+        {
+          it = terrain_memory_.erase(it);
+        }
+        else
+        {
+          ++it;
+        }
+      }
+    }
+
+    double QueryTerrainZ(double world_x, double world_y, double time) const
+    {
+      const double radius = std::max(
+        param::config.height_scan_estimator_memory_resolution,
+        param::config.height_scan_estimator_query_radius);
+      const double radius2 = radius * radius;
+      const double res = std::max(1.0e-6, param::config.height_scan_estimator_memory_resolution);
+      const auto center = MemoryKey(world_x, world_y);
+      const int span = std::max(1, static_cast<int>(std::ceil(radius / res)));
+      std::vector<double> candidates;
+
+      for (int dx = -span; dx <= span; ++dx)
+      {
+        for (int dy = -span; dy <= span; ++dy)
+        {
+          const auto key = std::make_pair(center.first + dx, center.second + dy);
+          const auto it = terrain_memory_.find(key);
+          if (it == terrain_memory_.end())
+          {
+            continue;
+          }
+          if (time - it->second.stamp > param::config.height_scan_estimator_memory_max_age)
+          {
+            continue;
+          }
+          const auto [cell_x, cell_y] = MemoryCellCenter(key);
+          const double ex = cell_x - world_x;
+          const double ey = cell_y - world_y;
+          if (ex * ex + ey * ey <= radius2)
+          {
+            candidates.push_back(it->second.z);
+          }
+        }
+      }
+
+      return Percentile(candidates, param::config.height_scan_estimator_query_percentile);
+    }
+
+    double EstimateSupportTerrainZ(double time) const
+    {
+      std::vector<double> support_heights;
+      const double cos_yaw = std::cos(est_pose_.yaw);
+      const double sin_yaw = std::sin(est_pose_.yaw);
+
+      for (const auto& [key, cell] : terrain_memory_)
+      {
+        if (time - cell.stamp > param::config.height_scan_estimator_memory_max_age)
+        {
+          continue;
+        }
+        const auto [world_x, world_y] = MemoryCellCenter(key);
+        const double dx = world_x - est_pose_.x;
+        const double dy = world_y - est_pose_.y;
+        const double local_x = cos_yaw * dx + sin_yaw * dy;
+        const double local_y = -sin_yaw * dx + cos_yaw * dy;
+        if (local_x >= param::config.height_scan_estimator_support_x_min &&
+            local_x <= param::config.height_scan_estimator_support_x_max &&
+            local_y >= param::config.height_scan_estimator_support_y_min &&
+            local_y <= param::config.height_scan_estimator_support_y_max)
+        {
+          support_heights.push_back(cell.z);
+        }
+      }
+
+      return Percentile(support_heights,
+                        param::config.height_scan_estimator_support_percentile);
+    }
+
+    void UpdateEstimatedBaseZ(double time)
+    {
+      const double support_z = EstimateSupportTerrainZ(time);
+      if (!std::isfinite(support_z))
+      {
+        return;
+      }
+
+      last_support_z_ = support_z;
+      const double target_z =
+        support_z + param::config.height_scan_estimator_nominal_pelvis_height;
+      const double dt = std::max(0.0, time - last_estimator_z_time_);
+      last_estimator_z_time_ = time;
+      if (dt <= 0.0)
+      {
+        return;
+      }
+
+      const double delta = target_z - est_pose_.z;
+      const double rate = delta >= 0.0
+        ? param::config.height_scan_estimator_base_z_rise_rate
+        : param::config.height_scan_estimator_base_z_fall_rate;
+      const double max_delta = std::max(0.0, rate) * dt;
+      if (max_delta <= 0.0)
+      {
+        return;
+      }
+      est_pose_.z += std::clamp(delta, -max_delta, max_delta);
+    }
+
+    void RenderFromMemory(
+      double time,
+      std::vector<float>& values,
+      std::vector<uint8_t>& unknown)
+    {
+      const int count_x = GridCount(param::config.height_scan_size_x,
+                                    param::config.height_scan_resolution);
+      const int count_y = GridCount(param::config.height_scan_size_y,
+                                    param::config.height_scan_resolution);
+      const size_t total = static_cast<size_t>(count_x) * static_cast<size_t>(count_y);
+      values.assign(total, static_cast<float>(param::config.height_scan_estimator_fill_value));
+      unknown.assign(total, 1);
+
+      const double resolution = std::max(1.0e-6, param::config.height_scan_resolution);
+      const double start_x = -0.5 * param::config.height_scan_size_x +
+                             param::config.height_scan_local_x_offset;
+      const double start_y = -0.5 * param::config.height_scan_size_y;
+      const double offset = param::config.height_scan_offset;
+      const double value_clip = param::config.height_scan_value_clip;
+      const double cos_yaw = std::cos(est_pose_.yaw);
+      const double sin_yaw = std::sin(est_pose_.yaw);
+
+      size_t unknown_count = 0;
+      for (int iy = 0; iy < count_y; ++iy)
+      {
+        const double local_y = start_y + static_cast<double>(iy) * resolution;
+        for (int ix = 0; ix < count_x; ++ix)
+        {
+          const size_t idx = static_cast<size_t>(iy * count_x + ix);
+          const double local_x = start_x + static_cast<double>(ix) * resolution;
+          const double world_x = est_pose_.x + cos_yaw * local_x - sin_yaw * local_y;
+          const double world_y = est_pose_.y + sin_yaw * local_x + cos_yaw * local_y;
+          const double terrain_z = QueryTerrainZ(world_x, world_y, time);
+          if (!std::isfinite(terrain_z))
+          {
+            if (param::config.height_scan_estimator_use_last_for_unknown != 0 &&
+                last_values_.size() == total)
+            {
+              values[idx] = last_values_[idx];
+            }
+            else
+            {
+              values[idx] = static_cast<float>(param::config.height_scan_estimator_fill_value);
+            }
+            ++unknown_count;
+            continue;
+          }
+
+          double value = est_pose_.z - terrain_z - offset;
+          if (value_clip > 0.0)
+          {
+            value = std::clamp(value, -value_clip, value_clip);
+          }
+          values[idx] = static_cast<float>(value);
+          unknown[idx] = 0;
+        }
+      }
+
+      last_unknown_ratio_ = total > 0
+        ? static_cast<double>(unknown_count) / static_cast<double>(total)
+        : 1.0;
     }
 
     static bool CastTerrainHitZ(
@@ -972,9 +1343,176 @@ namespace
       std::rename(tmp.c_str(), output.c_str());
     }
 
+    static std::array<uint8_t, 3> HeatColor(float value, bool unknown)
+    {
+      if (unknown)
+      {
+        return {90, 90, 90};
+      }
+
+      const double flat = param::config.height_scan_estimator_fill_value;
+      const double norm = std::clamp((static_cast<double>(value) - flat) / 0.25, -1.0, 1.0);
+      if (norm < 0.0)
+      {
+        const double t = -norm;
+        return {
+          static_cast<uint8_t>(60 + 190 * t),
+          static_cast<uint8_t>(205 - 95 * t),
+          static_cast<uint8_t>(70 - 40 * t)
+        };
+      }
+
+      return {
+        static_cast<uint8_t>(55 - 20 * norm),
+        static_cast<uint8_t>(205 - 85 * norm),
+        static_cast<uint8_t>(80 + 170 * norm)
+      };
+    }
+
+    void WriteDebugFiles(
+      double time,
+      const std::vector<float>& values,
+      const std::vector<uint8_t>& unknown) const
+    {
+      if (param::config.height_scan_debug_write == 0 || values.empty())
+      {
+        return;
+      }
+
+      WriteDebugCsv(time, values, unknown);
+      WriteDebugPpm(values, unknown);
+    }
+
+    void WriteDebugCsv(
+      double time,
+      const std::vector<float>& values,
+      const std::vector<uint8_t>& unknown) const
+    {
+      const std::string& output = param::config.height_scan_debug_csv_file;
+      if (output.empty())
+      {
+        return;
+      }
+
+      const std::string tmp = output + ".mujoco.tmp";
+      std::ofstream file(tmp);
+      if (!file)
+      {
+        return;
+      }
+
+      file << std::fixed << std::setprecision(5);
+      file << "mode," << param::config.height_scan_mode << "\n";
+      file << "time," << time << "\n";
+      file << "est_pose,"
+           << est_pose_.x << ","
+           << est_pose_.y << ","
+           << est_pose_.z << ","
+           << est_pose_.yaw << "\n";
+      file << "support_z," << last_support_z_ << "\n";
+      file << "unknown_ratio," << last_unknown_ratio_ << "\n";
+      file << "memory_cells," << terrain_memory_.size() << "\n";
+      file << "values\n";
+
+      const int count_x = GridCount(param::config.height_scan_size_x,
+                                    param::config.height_scan_resolution);
+      const int count_y = GridCount(param::config.height_scan_size_y,
+                                    param::config.height_scan_resolution);
+      for (int iy = 0; iy < count_y; ++iy)
+      {
+        for (int ix = 0; ix < count_x; ++ix)
+        {
+          if (ix > 0)
+          {
+            file << ",";
+          }
+          const size_t idx = static_cast<size_t>(iy * count_x + ix);
+          file << (idx < values.size() ? values[idx] : 0.0f);
+        }
+        file << "\n";
+      }
+      file << "unknown\n";
+      for (int iy = 0; iy < count_y; ++iy)
+      {
+        for (int ix = 0; ix < count_x; ++ix)
+        {
+          if (ix > 0)
+          {
+            file << ",";
+          }
+          const size_t idx = static_cast<size_t>(iy * count_x + ix);
+          file << (idx < unknown.size() ? static_cast<int>(unknown[idx]) : 1);
+        }
+        file << "\n";
+      }
+      file.close();
+      std::rename(tmp.c_str(), output.c_str());
+    }
+
+    void WriteDebugPpm(
+      const std::vector<float>& values,
+      const std::vector<uint8_t>& unknown) const
+    {
+      const std::string& output = param::config.height_scan_debug_ppm_file;
+      if (output.empty())
+      {
+        return;
+      }
+
+      const int count_x = GridCount(param::config.height_scan_size_x,
+                                    param::config.height_scan_resolution);
+      const int count_y = GridCount(param::config.height_scan_size_y,
+                                    param::config.height_scan_resolution);
+      constexpr int kCell = 24;
+      const int width = count_y * kCell;
+      const int height = count_x * kCell;
+      std::vector<uint8_t> image(static_cast<size_t>(width) * height * 3, 0);
+
+      for (int py = 0; py < height; ++py)
+      {
+        const int ix = count_x - 1 - py / kCell;
+        for (int px = 0; px < width; ++px)
+        {
+          const int iy = count_y - 1 - px / kCell;
+          const size_t idx = static_cast<size_t>(iy * count_x + ix);
+          const bool is_unknown = idx >= unknown.size() || unknown[idx] != 0;
+          auto color = HeatColor(idx < values.size() ? values[idx] : 0.0f, is_unknown);
+          if (py % kCell == 0 || px % kCell == 0)
+          {
+            color = {20, 20, 20};
+          }
+          const size_t out_idx = (static_cast<size_t>(py) * width + px) * 3;
+          image[out_idx + 0] = color[0];
+          image[out_idx + 1] = color[1];
+          image[out_idx + 2] = color[2];
+        }
+      }
+
+      const std::string tmp = output + ".mujoco.tmp";
+      std::ofstream file(tmp, std::ios::binary);
+      if (!file)
+      {
+        return;
+      }
+      file << "P6\n" << width << " " << height << "\n255\n";
+      file.write(reinterpret_cast<const char*>(image.data()),
+                 static_cast<std::streamsize>(image.size()));
+      file.close();
+      std::rename(tmp.c_str(), output.c_str());
+    }
+
     const mjModel* model_ = nullptr;
     int body_id_ = 0;
     double last_write_time_ = -1.0e9;
+    std::map<std::pair<int, int>, TerrainCell> terrain_memory_;
+    std::vector<float> last_values_;
+    std::vector<uint8_t> last_unknown_;
+    Pose2D est_pose_;
+    bool estimator_initialized_ = false;
+    double last_estimator_time_ = -1.0e9;
+    double last_estimator_z_time_ = -1.0e9;
+    double last_support_z_ = std::numeric_limits<double>::quiet_NaN();
+    double last_unknown_ratio_ = 1.0;
   };
 
   DepthBridge depth_bridge;
