@@ -856,6 +856,34 @@ private:
             cfg.release_confirm_frames);
         cfg.early_contact_time_s =
             cfg_float(memory_cfg, "early_contact_time_s", cfg.early_contact_time_s);
+        cfg.predicted_fill_enabled = cfg_bool(
+            memory_cfg,
+            "predicted_fill_enabled",
+            cfg.predicted_fill_enabled);
+        cfg.predicted_fill_grace_frames = cfg_int(
+            memory_cfg,
+            "predicted_fill_grace_frames",
+            cfg.predicted_fill_grace_frames);
+        cfg.predicted_fill_phase_window = cfg_float(
+            memory_cfg,
+            "predicted_fill_phase_window",
+            cfg.predicted_fill_phase_window);
+        cfg.predicted_fill_contact_threshold = cfg_float(
+            memory_cfg,
+            "predicted_fill_contact_threshold",
+            cfg.predicted_fill_contact_threshold);
+        cfg.predicted_fill_min_command_norm = cfg_float(
+            memory_cfg,
+            "predicted_fill_min_command_norm",
+            cfg.predicted_fill_min_command_norm);
+        cfg.predicted_fill_confidence = cfg_float(
+            memory_cfg,
+            "predicted_fill_confidence",
+            cfg.predicted_fill_confidence);
+        cfg.predicted_fill_touchdown_prob = cfg_float(
+            memory_cfg,
+            "predicted_fill_touchdown_prob",
+            cfg.predicted_fill_touchdown_prob);
 
         cfg.ratchet_height_threshold_m = cfg_float(
             memory_cfg, "ratchet_height_threshold_m", cfg.ratchet_height_threshold_m);

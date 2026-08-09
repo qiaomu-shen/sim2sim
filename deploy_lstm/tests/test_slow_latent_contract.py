@@ -97,6 +97,13 @@ def foot_event_fixture() -> list[dict[str, object]]:
     events.append(event)
   events.append({"kind": "reset"})
   events.append({"kind": "noop", "label": "after_reset", "dt": 0.0})
+  events.append({"kind": "reset"})
+  events.append(
+    {"kind": "predicted_footprint", "foot": 0, "x": 0.00, "z": 0.00}
+  )
+  events.append(
+    {"kind": "footprint", "foot": 1, "x": 0.25, "z": 0.15, "label": "predicted_pair"}
+  )
   return events
 
 
@@ -114,7 +121,7 @@ def run_cpp_foot_event_memory_fixture() -> dict[str, np.ndarray]:
       event_lines.append(f"      noop(memory, {dt:.8f}f, {label_arg});")
     elif kind == "release":
       event_lines.append(f"      release(memory, {label_arg});")
-    elif kind in {"footprint", "toe"}:
+    elif kind in {"footprint", "predicted_footprint", "toe"}:
       foot = int(event["foot"])
       x = float(event["x"])
       z = float(event["z"])
@@ -199,6 +206,27 @@ def run_cpp_foot_event_memory_fixture() -> dict[str, np.ndarray]:
       print_values(label, memory.update(frame));
     }
 
+    static void predicted_footprint(
+        FootEventMemory& memory,
+        int foot,
+        float x,
+        float z,
+        const char* label) {
+      std::vector<float> values;
+      for (int i = 0; i < 3; ++i) {
+        FootEventMemoryFrame frame = make_frame();
+        frame.phase = foot == 0
+            ? 0.03f * static_cast<float>(i)
+            : std::fmod(0.5f + 0.03f * static_cast<float>(i), 1.0f);
+        set_foot(frame, foot, x, z);
+        frame.contact_prob = foot == 0
+            ? std::array<float, 2>{1.0f, 0.0f}
+            : std::array<float, 2>{0.0f, 1.0f};
+        values = memory.update(frame);
+      }
+      print_values(label, values);
+    }
+
     static void toe(
         FootEventMemory& memory,
         int foot,
@@ -219,6 +247,11 @@ def run_cpp_foot_event_memory_fixture() -> dict[str, np.ndarray]:
       cfg.memory_len = 6;
       cfg.age_norm_s = 10.0f;
       cfg.stance_age_norm_s = 10.0f;
+      cfg.predicted_fill_enabled = true;
+      cfg.predicted_fill_grace_frames = 3;
+      cfg.predicted_fill_contact_threshold = 0.35f;
+      cfg.predicted_fill_confidence = 0.35f;
+      cfg.predicted_fill_touchdown_prob = 0.35f;
       FootEventMemory memory;
 __EVENT_LINES__
       return 0;
@@ -303,6 +336,16 @@ mask = torch.ones(1, dtype=torch.bool)
 zero = torch.zeros(1, dtype=torch.float32)
 one = torch.ones(1, dtype=torch.float32)
 outputs = {}
+predicted_confidence = torch.full(
+  (1,),
+  float(params.get("predicted_fill_confidence", 0.35)),
+  dtype=torch.float32,
+)
+predicted_touchdown_prob = torch.full(
+  (1,),
+  float(params.get("predicted_fill_touchdown_prob", 0.35)),
+  dtype=torch.float32,
+)
 
 
 def point(foot, x, z):
@@ -344,6 +387,21 @@ for event in events:
       touchdown_prob=one,
       confidence=one,
       source_predicted_fill=False,
+    )
+    summarize(label, True, False, dt)
+  elif kind == "predicted_footprint":
+    foot = int(event["foot"])
+    memory._push_footprint(
+      mask=mask,
+      foot_id=foot,
+      point_body=point(foot, event["x"], event["z"]),
+      root_pos_w=root_pos,
+      root_quat_w=root_quat,
+      phase_now=phase,
+      contact_prob=one,
+      touchdown_prob=predicted_touchdown_prob,
+      confidence=predicted_confidence,
+      source_predicted_fill=True,
     )
     summarize(label, True, False, dt)
   elif kind == "toe":
@@ -518,6 +576,132 @@ def run_cpp_foot_odometry_fixture() -> np.ndarray:
     tmp_path = Path(tmp)
     source_path = tmp_path / "foot_odometry_fixture.cpp"
     binary_path = tmp_path / "foot_odometry_fixture"
+    source_path.write_text(textwrap.dedent(source))
+    subprocess.run(
+      [
+        "g++",
+        "-std=c++17",
+        "-O2",
+        "-I",
+        str(ROOT / "include"),
+        "-I",
+        "/usr/include/eigen3",
+        str(source_path),
+        "-o",
+        str(binary_path),
+      ],
+      check=True,
+    )
+    output = subprocess.run(
+      [str(binary_path)],
+      check=True,
+      text=True,
+      capture_output=True,
+    ).stdout
+  return np.fromstring(output, sep=" ", dtype=np.float32)
+
+
+def run_cpp_predicted_fill_fixture() -> np.ndarray:
+  source = r"""
+    #define MJLAB_FOOT_EVENT_MEMORY_TESTING
+    #include "foot_event_memory.h"
+
+    #include <array>
+    #include <iostream>
+
+    using mjlab::diagnostics::FootEventMemory;
+    using mjlab::diagnostics::FootEventMemoryConfig;
+    using mjlab::diagnostics::FootEventMemoryFrame;
+
+    static FootEventMemoryFrame frame(float phase, float contact, bool touchdown) {
+      FootEventMemoryFrame frame;
+      frame.dt = 0.02f;
+      frame.phase = phase;
+      frame.command = {0.5f, 0.0f, 0.0f};
+      frame.root_quat_w = Eigen::Quaternionf::Identity();
+      frame.left_toe_pos_b = Eigen::Vector3f(0.0f, 0.10f, 0.0f);
+      frame.left_heel_pos_b = frame.left_toe_pos_b;
+      frame.right_toe_pos_b = Eigen::Vector3f(0.25f, -0.10f, 0.0f);
+      frame.right_heel_pos_b = frame.right_toe_pos_b;
+      frame.contact_prob = {contact, 0.0f};
+      frame.touchdown_prob = {touchdown ? 1.0f : 0.0f, 0.0f};
+      frame.touchdown_event = {touchdown, false};
+      return frame;
+    }
+
+    int main() {
+      FootEventMemoryConfig cfg;
+      cfg.memory_len = 6;
+      cfg.age_norm_s = 10.0f;
+      cfg.stance_age_norm_s = 10.0f;
+      cfg.predicted_fill_enabled = true;
+      cfg.predicted_fill_grace_frames = 3;
+      cfg.predicted_fill_phase_window = 0.18f;
+      cfg.predicted_fill_contact_threshold = 0.35f;
+      cfg.predicted_fill_confidence = 0.35f;
+      cfg.predicted_fill_touchdown_prob = 0.35f;
+      FootEventMemory memory;
+      memory.configure(cfg);
+
+      memory.update(frame(0.00f, 1.0f, false));
+      memory.update(frame(0.03f, 1.0f, false));
+      const float count_before_fill =
+          static_cast<float>(memory.valid_footprint_count_for_testing());
+      memory.update(frame(0.06f, 1.0f, false));
+      const auto predicted = memory.footprint_for_testing(0);
+      const float count_after_fill =
+          static_cast<float>(memory.valid_footprint_count_for_testing());
+      const float pending_after_fill =
+          memory.predicted_fill_pending_for_testing(0) ? 1.0f : 0.0f;
+      memory.update(frame(0.09f, 1.0f, true));
+      const float count_after_late_touchdown =
+          static_cast<float>(memory.valid_footprint_count_for_testing());
+
+      memory.configure(cfg);
+      memory.update(frame(0.00f, 1.0f, false));
+      memory.update(frame(0.03f, 1.0f, true));
+      const auto confirmed = memory.footprint_for_testing(0);
+      const float timely_count =
+          static_cast<float>(memory.valid_footprint_count_for_testing());
+
+      memory.configure(cfg);
+      memory.update(frame(0.00f, 0.0f, false));
+      memory.update(frame(0.03f, 0.0f, false));
+      memory.update(frame(0.06f, 0.0f, false));
+      const float unsupported_count =
+          static_cast<float>(memory.valid_footprint_count_for_testing());
+
+      memory.configure(cfg);
+      memory.update(frame(0.00f, 1.0f, false));
+      memory.configure(cfg);
+      memory.update(frame(0.03f, 1.0f, false));
+      const float reset_first_frame_count =
+          static_cast<float>(memory.valid_footprint_count_for_testing());
+      const float reset_pending =
+          memory.predicted_fill_pending_for_testing(0) ? 1.0f : 0.0f;
+
+      std::cout
+          << count_before_fill << ' '
+          << count_after_fill << ' '
+          << predicted[3] << ' '
+          << predicted[4] << ' '
+          << predicted[5] << ' '
+          << predicted[15] << ' '
+          << pending_after_fill << ' '
+          << count_after_late_touchdown << ' '
+          << timely_count << ' '
+          << confirmed[3] << ' '
+          << confirmed[4] << ' '
+          << unsupported_count << ' '
+          << reset_first_frame_count << ' '
+          << reset_pending << '\n';
+      return 0;
+    }
+  """
+  with tempfile.TemporaryDirectory() as tmp:
+    tmp_path = Path(tmp)
+    source_path = tmp_path / "predicted_fill_fixture.cpp"
+    binary_path = tmp_path / "predicted_fill_fixture"
     source_path.write_text(textwrap.dedent(source))
     subprocess.run(
       [
@@ -932,6 +1116,12 @@ def main() -> None:
   memory_cfg = deploy_cfg["diagnostics"]["foot_event_memory"]
   assert memory_cfg["memory_len"] == 6
   assert memory_cfg["age_norm_s"] == 1.5
+  assert memory_cfg["predicted_fill_enabled"] is True
+  assert memory_cfg["predicted_fill_grace_frames"] == 3
+  assert memory_cfg["predicted_fill_phase_window"] == 0.18
+  assert memory_cfg["predicted_fill_contact_threshold"] == 0.35
+  assert memory_cfg["predicted_fill_confidence"] == 0.35
+  assert memory_cfg["predicted_fill_touchdown_prob"] == 0.35
   assert memory_cfg["ratchet_probe_increment_m"] == 0.05
   assert memory_cfg["ratchet_probe_bootstrap_increment_m"] == 0.10
   assert memory_cfg["ratchet_probe_cap_m"] == 0.76
@@ -1116,6 +1306,16 @@ def main() -> None:
     atol=2.5e-5,
   )
 
+  predicted_fill = run_cpp_predicted_fill_fixture()
+  np.testing.assert_allclose(
+    predicted_fill,
+    np.array(
+      [0, 1, 0, 1, 0.35, 0.35, 0, 1, 1, 1, 0, 0, 0, 1],
+      dtype=np.float32,
+    ),
+    atol=2.5e-5,
+  )
+
   cpp_fixture = run_cpp_foot_event_memory_fixture()
   python_fixture = run_python_foot_event_memory_fixture(memory_cfg)
   assert cpp_fixture.keys() == python_fixture.keys()
@@ -1152,6 +1352,8 @@ def main() -> None:
   assert cpp_fixture["lock_recovery"][79] == 1.0, cpp_fixture["lock_recovery"][70:80]
   assert cpp_fixture["lock_reopen"][76] == 1.0
   assert cpp_fixture["lock_reopen"][79] == 0.5
+  assert cpp_fixture["predicted_pair"][0] == 1.0
+  assert 0.18 < cpp_fixture["predicted_pair"][1] < 0.20
 
   print("Slow-latent ONNX/deploy contract test passed.")
 

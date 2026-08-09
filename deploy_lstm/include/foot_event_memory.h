@@ -22,6 +22,13 @@ struct FootEventMemoryConfig
     float release_contact_prob_threshold = 0.20f;
     int release_confirm_frames = 2;
     float early_contact_time_s = 0.08f;
+    bool predicted_fill_enabled = false;
+    int predicted_fill_grace_frames = 3;
+    float predicted_fill_phase_window = 0.18f;
+    float predicted_fill_contact_threshold = 0.35f;
+    float predicted_fill_min_command_norm = 0.10f;
+    float predicted_fill_confidence = 0.35f;
+    float predicted_fill_touchdown_prob = 0.35f;
 
     float ratchet_height_threshold_m = 0.025f;
     float ratchet_flat_height_threshold_m = 0.02f;
@@ -132,6 +139,18 @@ public:
         cfg_.memory_len = std::max(1, cfg_.memory_len);
         cfg_.age_norm_s = std::max(cfg_.age_norm_s, 1.0e-6f);
         cfg_.stance_age_norm_s = std::max(cfg_.stance_age_norm_s, 1.0e-6f);
+        cfg_.predicted_fill_grace_frames =
+            std::max(1, cfg_.predicted_fill_grace_frames);
+        cfg_.predicted_fill_phase_window =
+            clamp(cfg_.predicted_fill_phase_window, 0.0f, 0.5f);
+        cfg_.predicted_fill_contact_threshold =
+            clamp(cfg_.predicted_fill_contact_threshold, 0.0f, 1.0f);
+        cfg_.predicted_fill_min_command_norm =
+            std::max(0.0f, cfg_.predicted_fill_min_command_norm);
+        cfg_.predicted_fill_confidence =
+            clamp(cfg_.predicted_fill_confidence, 0.0f, 1.0f);
+        cfg_.predicted_fill_touchdown_prob =
+            clamp(cfg_.predicted_fill_touchdown_prob, 0.0f, 1.0f);
         cfg_.ratchet_probe_cap_m = clamp(
             cfg_.ratchet_probe_cap_m,
             cfg_.ratchet_min_stride_m,
@@ -159,6 +178,7 @@ public:
         release_count_ = {0, 0};
         stance_age_s_ = {0.0f, 0.0f};
         active_footprint_slot_ = {-1, -1};
+        predicted_fill_state_ = {PredictedFillState{}, PredictedFillState{}};
         odom_ = ContactFootOdometry{};
         ratchet_ = RatchetState{};
         summary_.assign(kSummaryDim, 0.0f);
@@ -183,6 +203,8 @@ public:
         bool new_footprint_any = false;
         bool new_toe_mark_any = false;
 
+        refresh_predicted_fill_phase(frame.phase);
+
         for (int foot = 0; foot < 2; ++foot) {
             const bool allowed = !foot_in_stance_[foot];
             const bool touchdown = frame.touchdown_event[foot] && allowed;
@@ -194,7 +216,21 @@ public:
                     phase_now,
                     frame.contact_prob[foot],
                     frame.touchdown_prob[foot],
-                    frame.touchdown_prob[foot]);
+                    frame.touchdown_prob[foot],
+                    false);
+                predicted_fill_state_[foot].pending = false;
+                new_footprint_any = true;
+            } else if (should_insert_predicted_footprint(frame, foot)) {
+                push_footprint(
+                    foot,
+                    foot_points[foot],
+                    frame.root_quat_w,
+                    phase_now,
+                    frame.contact_prob[foot],
+                    cfg_.predicted_fill_touchdown_prob,
+                    cfg_.predicted_fill_confidence,
+                    true);
+                predicted_fill_state_[foot].pending = false;
                 new_footprint_any = true;
             }
 
@@ -218,7 +254,8 @@ public:
 
         for (int foot = 0; foot < 2; ++foot) {
             if (frame.contact_prob[foot] >= cfg_.odom_contact_lock_threshold &&
-                !foot_in_stance_[foot]) {
+                !foot_in_stance_[foot] &&
+                !predicted_fill_state_[foot].pending) {
                 foot_in_stance_[foot] = true;
                 stance_age_s_[foot] = 0.0f;
             }
@@ -243,6 +280,27 @@ public:
     bool odom_locked_for_testing(int foot) const
     {
         return foot >= 0 && foot < 2 && odom_.locked[foot];
+    }
+
+    std::array<float, kFootprintSlotDim> footprint_for_testing(int slot) const
+    {
+        if (slot < 0 || slot >= static_cast<int>(footprints_.size())) {
+            return std::array<float, kFootprintSlotDim>{};
+        }
+        return footprints_[static_cast<size_t>(slot)];
+    }
+
+    size_t valid_footprint_count_for_testing() const
+    {
+        return static_cast<size_t>(std::count(
+            footprint_valid_.begin(),
+            footprint_valid_.end(),
+            true));
+    }
+
+    bool predicted_fill_pending_for_testing(int foot) const
+    {
+        return foot >= 0 && foot < 2 && predicted_fill_state_[foot].pending;
     }
 #endif
 
@@ -321,6 +379,13 @@ private:
                 base_pos_w = estimate;
             }
         }
+    };
+
+    struct PredictedFillState
+    {
+        bool prev_expected_stance = false;
+        bool pending = false;
+        int age_frames = 0;
     };
 
     struct RatchetState
@@ -413,6 +478,67 @@ private:
         }
         const float angle = frame.phase * 2.0f * static_cast<float>(M_PI);
         return {std::sin(angle), std::cos(angle)};
+    }
+
+    static float wrap_phase(float phase)
+    {
+        float wrapped = std::fmod(phase, 1.0f);
+        if (wrapped < 0.0f) {
+            wrapped += 1.0f;
+        }
+        return wrapped;
+    }
+
+    bool expected_stance_phase(float phase, int foot) const
+    {
+        if (!cfg_.predicted_fill_enabled ||
+            cfg_.predicted_fill_phase_window <= 0.0f) {
+            return false;
+        }
+        const float foot_phase = wrap_phase(phase + (foot == 1 ? 0.5f : 0.0f));
+        return foot_phase < cfg_.predicted_fill_phase_window;
+    }
+
+    void refresh_predicted_fill_phase(float phase)
+    {
+        for (int foot = 0; foot < 2; ++foot) {
+            auto& state = predicted_fill_state_[foot];
+            const bool expected = expected_stance_phase(phase, foot);
+            if (!cfg_.predicted_fill_enabled || !expected) {
+                state.pending = false;
+                state.age_frames = 0;
+                state.prev_expected_stance = expected;
+                continue;
+            }
+            if (expected && !state.prev_expected_stance && !foot_in_stance_[foot]) {
+                state.pending = true;
+                state.age_frames = 0;
+            }
+            state.prev_expected_stance = expected;
+        }
+    }
+
+    bool should_insert_predicted_footprint(const FootEventMemoryFrame& frame, int foot)
+    {
+        if (!cfg_.predicted_fill_enabled || foot_in_stance_[foot]) {
+            return false;
+        }
+        auto& state = predicted_fill_state_[foot];
+        if (!state.pending) {
+            return false;
+        }
+        state.age_frames += 1;
+        if (state.age_frames < cfg_.predicted_fill_grace_frames) {
+            return false;
+        }
+        const float command_norm = std::sqrt(
+            frame.command[0] * frame.command[0] +
+            frame.command[1] * frame.command[1] +
+            frame.command[2] * frame.command[2]);
+        if (command_norm < cfg_.predicted_fill_min_command_norm) {
+            return false;
+        }
+        return frame.contact_prob[foot] >= cfg_.predicted_fill_contact_threshold;
     }
 
     void age_and_refresh(float dt, const Eigen::Quaternionf& root_quat_w)
@@ -535,7 +661,8 @@ private:
         const std::array<float, 2>& phase_now,
         float contact_prob,
         float touchdown_prob,
-        float confidence)
+        float confidence,
+        bool source_predicted_fill = false)
     {
         shift_footprints();
         const Eigen::Vector3f point_w = odom_.base_pos_w + root_quat_w * point_body;
@@ -545,8 +672,8 @@ private:
         feature[0] = 1.0f;
         feature[1] = foot == 0 ? 1.0f : 0.0f;
         feature[2] = foot == 1 ? 1.0f : 0.0f;
-        feature[3] = 1.0f;
-        feature[4] = 0.0f;
+        feature[3] = source_predicted_fill ? 0.0f : 1.0f;
+        feature[4] = source_predicted_fill ? 1.0f : 0.0f;
         feature[5] = clamp(confidence, 0.0f, 1.0f);
         feature[6] = 0.0f;
         feature[7] = rel.x();
@@ -2194,6 +2321,10 @@ private:
     std::array<int, 2> release_count_ = {0, 0};
     std::array<float, 2> stance_age_s_ = {0.0f, 0.0f};
     std::array<int, 2> active_footprint_slot_ = {-1, -1};
+    std::array<PredictedFillState, 2> predicted_fill_state_ = {
+        PredictedFillState{},
+        PredictedFillState{},
+    };
     ContactFootOdometry odom_;
     RatchetState ratchet_;
     std::vector<float> summary_ = std::vector<float>(kSummaryDim, 0.0f);
