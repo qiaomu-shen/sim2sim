@@ -868,6 +868,10 @@ private:
             memory_cfg,
             "predicted_fill_phase_window",
             cfg.predicted_fill_phase_window);
+        cfg.predicted_fill_phase_lead_window = cfg_float(
+            memory_cfg,
+            "predicted_fill_phase_lead_window",
+            cfg.predicted_fill_phase_lead_window);
         cfg.predicted_fill_contact_threshold = cfg_float(
             memory_cfg,
             "predicted_fill_contact_threshold",
@@ -884,6 +888,14 @@ private:
             memory_cfg,
             "predicted_fill_touchdown_prob",
             cfg.predicted_fill_touchdown_prob);
+        cfg.touchdown_gate_enabled = cfg_bool(
+            memory_cfg,
+            "touchdown_gate_enabled",
+            cfg.touchdown_gate_enabled);
+        cfg.touchdown_gate_contact_threshold = cfg_float(
+            memory_cfg,
+            "touchdown_gate_contact_threshold",
+            cfg.touchdown_gate_contact_threshold);
 
         cfg.ratchet_height_threshold_m = cfg_float(
             memory_cfg, "ratchet_height_threshold_m", cfg.ratchet_height_threshold_m);

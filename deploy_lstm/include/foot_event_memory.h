@@ -25,10 +25,13 @@ struct FootEventMemoryConfig
     bool predicted_fill_enabled = false;
     int predicted_fill_grace_frames = 3;
     float predicted_fill_phase_window = 0.18f;
+    float predicted_fill_phase_lead_window = 0.08f;
     float predicted_fill_contact_threshold = 0.35f;
     float predicted_fill_min_command_norm = 0.10f;
     float predicted_fill_confidence = 0.35f;
     float predicted_fill_touchdown_prob = 0.35f;
+    bool touchdown_gate_enabled = true;
+    float touchdown_gate_contact_threshold = 0.20f;
 
     float ratchet_height_threshold_m = 0.025f;
     float ratchet_flat_height_threshold_m = 0.02f;
@@ -143,6 +146,8 @@ public:
             std::max(1, cfg_.predicted_fill_grace_frames);
         cfg_.predicted_fill_phase_window =
             clamp(cfg_.predicted_fill_phase_window, 0.0f, 0.5f);
+        cfg_.predicted_fill_phase_lead_window =
+            clamp(cfg_.predicted_fill_phase_lead_window, 0.0f, 0.5f);
         cfg_.predicted_fill_contact_threshold =
             clamp(cfg_.predicted_fill_contact_threshold, 0.0f, 1.0f);
         cfg_.predicted_fill_min_command_norm =
@@ -151,6 +156,8 @@ public:
             clamp(cfg_.predicted_fill_confidence, 0.0f, 1.0f);
         cfg_.predicted_fill_touchdown_prob =
             clamp(cfg_.predicted_fill_touchdown_prob, 0.0f, 1.0f);
+        cfg_.touchdown_gate_contact_threshold =
+            clamp(cfg_.touchdown_gate_contact_threshold, 0.0f, 1.0f);
         cfg_.ratchet_probe_cap_m = clamp(
             cfg_.ratchet_probe_cap_m,
             cfg_.ratchet_min_stride_m,
@@ -194,9 +201,7 @@ public:
             frame.left_toe_pos_b,
             frame.right_toe_pos_b,
         }};
-        odom_.update(cfg_, frame.root_quat_w, foot_points, frame.contact_prob, frame.touchdown_event);
 
-        age_and_refresh(frame.dt, frame.root_quat_w);
         update_stance_latches(frame.contact_prob, frame.dt);
 
         const std::array<float, 2> phase_now = phase_features(frame);
@@ -205,10 +210,34 @@ public:
 
         refresh_predicted_fill_phase(frame.phase);
 
+        std::array<bool, 2> accepted_touchdown = {false, false};
+        std::array<bool, 2> predicted_touchdown = {false, false};
         for (int foot = 0; foot < 2; ++foot) {
             const bool allowed = !foot_in_stance_[foot];
-            const bool touchdown = frame.touchdown_event[foot] && allowed;
-            if (touchdown) {
+            accepted_touchdown[foot] =
+                frame.touchdown_event[foot] &&
+                allowed &&
+                touchdown_event_allowed(frame, foot);
+            if (!accepted_touchdown[foot]) {
+                predicted_touchdown[foot] =
+                    should_insert_predicted_footprint(frame, foot);
+            }
+        }
+
+        std::array<bool, 2> odom_touchdown = {{
+            accepted_touchdown[0] || (predicted_touchdown[0] && !odom_.locked[0]),
+            accepted_touchdown[1] || (predicted_touchdown[1] && !odom_.locked[1]),
+        }};
+        odom_.update(
+            cfg_,
+            frame.root_quat_w,
+            foot_points,
+            frame.contact_prob,
+            odom_touchdown);
+        age_and_refresh(frame.dt, frame.root_quat_w);
+
+        for (int foot = 0; foot < 2; ++foot) {
+            if (accepted_touchdown[foot]) {
                 push_footprint(
                     foot,
                     foot_points[foot],
@@ -220,7 +249,7 @@ public:
                     false);
                 predicted_fill_state_[foot].pending = false;
                 new_footprint_any = true;
-            } else if (should_insert_predicted_footprint(frame, foot)) {
+            } else if (predicted_touchdown[foot]) {
                 push_footprint(
                     foot,
                     foot_points[foot],
@@ -255,7 +284,9 @@ public:
         for (int foot = 0; foot < 2; ++foot) {
             if (frame.contact_prob[foot] >= cfg_.odom_contact_lock_threshold &&
                 !foot_in_stance_[foot] &&
-                !predicted_fill_state_[foot].pending) {
+                !predicted_fill_state_[foot].pending &&
+                !predicted_fill_phase_guard(frame.phase, foot) &&
+                !frame.touchdown_event[foot]) {
                 foot_in_stance_[foot] = true;
                 stance_age_s_[foot] = 0.0f;
             }
@@ -383,9 +414,10 @@ private:
 
     struct PredictedFillState
     {
-        bool prev_expected_stance = false;
+        bool prev_phase_guard = false;
         bool pending = false;
         int age_frames = 0;
+        int expected_age_frames = 0;
     };
 
     struct RatchetState
@@ -489,33 +521,75 @@ private:
         return wrapped;
     }
 
+    float foot_stance_phase(float phase, int foot) const
+    {
+        return wrap_phase(phase + (foot == 1 ? 0.5f : 0.0f));
+    }
+
     bool expected_stance_phase(float phase, int foot) const
     {
-        if (!cfg_.predicted_fill_enabled ||
-            cfg_.predicted_fill_phase_window <= 0.0f) {
+        if (cfg_.predicted_fill_phase_window <= 0.0f) {
             return false;
         }
-        const float foot_phase = wrap_phase(phase + (foot == 1 ? 0.5f : 0.0f));
-        return foot_phase < cfg_.predicted_fill_phase_window;
+        return foot_stance_phase(phase, foot) < cfg_.predicted_fill_phase_window;
+    }
+
+    bool pre_stance_phase(float phase, int foot) const
+    {
+        if (cfg_.predicted_fill_phase_lead_window <= 0.0f) {
+            return false;
+        }
+        return foot_stance_phase(phase, foot) >
+               1.0f - cfg_.predicted_fill_phase_lead_window;
+    }
+
+    bool touchdown_phase_allowed(float phase, int foot) const
+    {
+        return expected_stance_phase(phase, foot) || pre_stance_phase(phase, foot);
+    }
+
+    bool predicted_fill_phase_guard(float phase, int foot) const
+    {
+        return cfg_.predicted_fill_enabled && touchdown_phase_allowed(phase, foot);
     }
 
     void refresh_predicted_fill_phase(float phase)
     {
         for (int foot = 0; foot < 2; ++foot) {
             auto& state = predicted_fill_state_[foot];
+            const bool guard = predicted_fill_phase_guard(phase, foot);
             const bool expected = expected_stance_phase(phase, foot);
-            if (!cfg_.predicted_fill_enabled || !expected) {
+            if (!cfg_.predicted_fill_enabled || !guard) {
                 state.pending = false;
                 state.age_frames = 0;
-                state.prev_expected_stance = expected;
+                state.expected_age_frames = 0;
+                state.prev_phase_guard = guard;
                 continue;
             }
-            if (expected && !state.prev_expected_stance && !foot_in_stance_[foot]) {
+            if (guard && !state.prev_phase_guard && !foot_in_stance_[foot]) {
                 state.pending = true;
                 state.age_frames = 0;
+                state.expected_age_frames = 0;
             }
-            state.prev_expected_stance = expected;
+            if (state.pending) {
+                state.age_frames += 1;
+                if (expected) {
+                    state.expected_age_frames += 1;
+                }
+            }
+            state.prev_phase_guard = guard;
         }
+    }
+
+    bool touchdown_event_allowed(const FootEventMemoryFrame& frame, int foot) const
+    {
+        if (!cfg_.touchdown_gate_enabled) {
+            return true;
+        }
+        if (frame.contact_prob[foot] < cfg_.touchdown_gate_contact_threshold) {
+            return false;
+        }
+        return touchdown_phase_allowed(frame.phase, foot);
     }
 
     bool should_insert_predicted_footprint(const FootEventMemoryFrame& frame, int foot)
@@ -527,8 +601,8 @@ private:
         if (!state.pending) {
             return false;
         }
-        state.age_frames += 1;
-        if (state.age_frames < cfg_.predicted_fill_grace_frames) {
+        if (!expected_stance_phase(frame.phase, foot) ||
+            state.expected_age_frames < cfg_.predicted_fill_grace_frames) {
             return false;
         }
         const float command_norm = std::sqrt(

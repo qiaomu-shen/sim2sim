@@ -108,10 +108,13 @@ diagnostics:
     predicted_fill_enabled: true
     predicted_fill_grace_frames: 3
     predicted_fill_phase_window: 0.18
+    predicted_fill_phase_lead_window: 0.08
     predicted_fill_contact_threshold: 0.35
     predicted_fill_min_command_norm: 0.10
     predicted_fill_confidence: 0.35
     predicted_fill_touchdown_prob: 0.35
+    touchdown_gate_enabled: true
+    touchdown_gate_contact_threshold: 0.20
     odom_contact_lock_threshold: 0.55
     odom_contact_release_threshold: 0.20
     odom_max_step_translation_m: 0.20

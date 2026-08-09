@@ -252,6 +252,7 @@ def run_cpp_foot_event_memory_fixture() -> dict[str, np.ndarray]:
       cfg.predicted_fill_contact_threshold = 0.35f;
       cfg.predicted_fill_confidence = 0.35f;
       cfg.predicted_fill_touchdown_prob = 0.35f;
+      cfg.touchdown_gate_enabled = false;
       FootEventMemory memory;
 __EVENT_LINES__
       return 0;
@@ -496,6 +497,7 @@ def run_cpp_foot_odometry_fixture() -> np.ndarray:
       cfg.age_norm_s = 10.0f;
       cfg.stance_age_norm_s = 10.0f;
       cfg.odom_max_double_support_residual_m = 0.06f;
+      cfg.touchdown_gate_enabled = false;
       FootEventMemory memory;
       memory.configure(cfg);
 
@@ -607,6 +609,7 @@ def run_cpp_predicted_fill_fixture() -> np.ndarray:
     #include "foot_event_memory.h"
 
     #include <array>
+    #include <cmath>
     #include <iostream>
 
     using mjlab::diagnostics::FootEventMemory;
@@ -629,6 +632,29 @@ def run_cpp_predicted_fill_fixture() -> np.ndarray:
       return frame;
     }
 
+    static FootEventMemoryFrame world_frame(
+        float phase,
+        float base_x,
+        float contact,
+        bool touchdown) {
+      FootEventMemoryFrame frame;
+      frame.dt = 0.02f;
+      frame.phase = phase;
+      frame.command = {0.5f, 0.0f, 0.0f};
+      frame.root_quat_w = Eigen::Quaternionf::Identity();
+      const Eigen::Vector3f base(base_x, 0.0f, 0.0f);
+      const Eigen::Vector3f left_w(0.0f, 0.10f, 0.0f);
+      const Eigen::Vector3f right_w(0.25f, -0.10f, 0.0f);
+      frame.left_toe_pos_b = left_w - base;
+      frame.left_heel_pos_b = frame.left_toe_pos_b;
+      frame.right_toe_pos_b = right_w - base;
+      frame.right_heel_pos_b = frame.right_toe_pos_b;
+      frame.contact_prob = {contact, 0.0f};
+      frame.touchdown_prob = {touchdown ? 1.0f : 0.0f, 0.0f};
+      frame.touchdown_event = {touchdown, false};
+      return frame;
+    }
+
     int main() {
       FootEventMemoryConfig cfg;
       cfg.memory_len = 6;
@@ -637,9 +663,12 @@ def run_cpp_predicted_fill_fixture() -> np.ndarray:
       cfg.predicted_fill_enabled = true;
       cfg.predicted_fill_grace_frames = 3;
       cfg.predicted_fill_phase_window = 0.18f;
+      cfg.predicted_fill_phase_lead_window = 0.08f;
       cfg.predicted_fill_contact_threshold = 0.35f;
       cfg.predicted_fill_confidence = 0.35f;
       cfg.predicted_fill_touchdown_prob = 0.35f;
+      cfg.touchdown_gate_enabled = true;
+      cfg.touchdown_gate_contact_threshold = 0.20f;
       FootEventMemory memory;
       memory.configure(cfg);
 
@@ -680,6 +709,32 @@ def run_cpp_predicted_fill_fixture() -> np.ndarray:
       const float reset_pending =
           memory.predicted_fill_pending_for_testing(0) ? 1.0f : 0.0f;
 
+      memory.configure(cfg);
+      memory.update(frame(0.98f, 1.0f, false));
+      const float early_count =
+          static_cast<float>(memory.valid_footprint_count_for_testing());
+      const float early_pending =
+          memory.predicted_fill_pending_for_testing(0) ? 1.0f : 0.0f;
+      memory.update(frame(0.00f, 1.0f, true));
+      const auto early_confirmed = memory.footprint_for_testing(0);
+      const float early_accept_count =
+          static_cast<float>(memory.valid_footprint_count_for_testing());
+
+      memory.configure(cfg);
+      memory.update(world_frame(0.00f, 0.00f, 1.0f, false));
+      memory.update(world_frame(0.03f, 0.10f, 1.0f, false));
+      memory.update(world_frame(0.06f, 0.20f, 1.0f, false));
+      const float late_odom_before = memory.odom_base_pos_for_testing().x();
+      memory.update(world_frame(0.09f, 0.25f, 1.0f, true));
+      const float late_odom_after = memory.odom_base_pos_for_testing().x();
+      const float late_count =
+          static_cast<float>(memory.valid_footprint_count_for_testing());
+
+      memory.configure(cfg);
+      memory.update(frame(0.25f, 0.0f, true));
+      const float false_positive_count =
+          static_cast<float>(memory.valid_footprint_count_for_testing());
+
       std::cout
           << count_before_fill << ' '
           << count_after_fill << ' '
@@ -694,7 +749,16 @@ def run_cpp_predicted_fill_fixture() -> np.ndarray:
           << confirmed[4] << ' '
           << unsupported_count << ' '
           << reset_first_frame_count << ' '
-          << reset_pending << '\n';
+          << reset_pending << ' '
+          << early_count << ' '
+          << early_pending << ' '
+          << early_accept_count << ' '
+          << early_confirmed[3] << ' '
+          << early_confirmed[4] << ' '
+          << late_odom_before << ' '
+          << late_odom_after << ' '
+          << late_count << ' '
+          << false_positive_count << '\n';
       return 0;
     }
   """
@@ -1119,9 +1183,12 @@ def main() -> None:
   assert memory_cfg["predicted_fill_enabled"] is True
   assert memory_cfg["predicted_fill_grace_frames"] == 3
   assert memory_cfg["predicted_fill_phase_window"] == 0.18
+  assert memory_cfg["predicted_fill_phase_lead_window"] == 0.08
   assert memory_cfg["predicted_fill_contact_threshold"] == 0.35
   assert memory_cfg["predicted_fill_confidence"] == 0.35
   assert memory_cfg["predicted_fill_touchdown_prob"] == 0.35
+  assert memory_cfg["touchdown_gate_enabled"] is True
+  assert memory_cfg["touchdown_gate_contact_threshold"] == 0.20
   assert memory_cfg["ratchet_probe_increment_m"] == 0.05
   assert memory_cfg["ratchet_probe_bootstrap_increment_m"] == 0.10
   assert memory_cfg["ratchet_probe_cap_m"] == 0.76
@@ -1310,7 +1377,10 @@ def main() -> None:
   np.testing.assert_allclose(
     predicted_fill,
     np.array(
-      [0, 1, 0, 1, 0.35, 0.35, 0, 1, 1, 1, 0, 0, 0, 1],
+      [
+        0, 1, 0, 1, 0.35, 0.35, 0, 1, 1, 1, 0, 0, 0, 1,
+        0, 1, 1, 1, 0, 0.20, 0.25, 1, 0,
+      ],
       dtype=np.float32,
     ),
     atol=2.5e-5,
