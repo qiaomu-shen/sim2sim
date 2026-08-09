@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <eigen3/Eigen/Dense>
 #include <yaml-cpp/yaml.h>
 #include "isaaclab/envs/manager_based_rl_env.h"
@@ -49,6 +50,17 @@ public:
                 0.0f,
                 0.999f);
         }
+        if(cfg["target_delta_limit"] && !cfg["target_delta_limit"].IsNull()) {
+            const auto target_delta_limit = cfg["target_delta_limit"];
+            if(target_delta_limit.IsScalar()) {
+                _target_delta_limit.push_back(std::max(0.0f, target_delta_limit.as<float>()));
+            } else {
+                _target_delta_limit = target_delta_limit.as<std::vector<float> >();
+                for(float& limit : _target_delta_limit) {
+                    limit = std::max(0.0f, limit);
+                }
+            }
+        }
     }
 
     virtual void process_actions(std::vector<float> actions)
@@ -92,6 +104,37 @@ public:
                 _processed_actions[i] = std::clamp(_processed_actions[i], _clip[i][0], _clip[i][1]);
             }
         }
+        if(!_target_delta_limit.empty()) {
+            if(!_target_delta_initialized ||
+                _prev_processed_actions.size() != _processed_actions.size()) {
+                _prev_processed_actions.assign(_processed_actions.size(), 0.0f);
+                for(int i(0); i<_action_dim; ++i) {
+                    if(!_offset.empty()) {
+                        _prev_processed_actions[i] = _offset[i];
+                    }
+                }
+                _target_delta_initialized = true;
+            }
+            for(int i(0); i<_action_dim; ++i) {
+                const float limit = _target_delta_limit.size() == 1
+                    ? _target_delta_limit[0]
+                    : (i < static_cast<int>(_target_delta_limit.size())
+                        ? _target_delta_limit[i]
+                        : 0.0f);
+                if(limit > 0.0f) {
+                    const float delta = _processed_actions[i] - _prev_processed_actions[i];
+                    _processed_actions[i] = _prev_processed_actions[i] +
+                        std::clamp(delta, -limit, limit);
+                }
+            }
+            _prev_processed_actions = _processed_actions;
+            for(int i(0); i<_action_dim; ++i) {
+                if(!_scale.empty() && std::abs(_scale[i]) > 1.0e-6f) {
+                    const float offset = !_offset.empty() ? _offset[i] : 0.0f;
+                    _raw_actions[i] = (_processed_actions[i] - offset) / _scale[i];
+                }
+            }
+        }
     }
 
 
@@ -114,7 +157,9 @@ public:
     {
         _raw_actions.assign(_action_dim, 0.0f);
         _prev_raw_actions.assign(_action_dim, 0.0f);
+        _prev_processed_actions.assign(_action_dim, 0.0f);
         _raw_filter_initialized = false;
+        _target_delta_initialized = false;
         process_actions(_raw_actions);
     }
 
@@ -125,13 +170,16 @@ protected:
     std::vector<float> _raw_actions;
     std::vector<float> _prev_raw_actions;
     std::vector<float> _processed_actions;
+    std::vector<float> _prev_processed_actions;
 
     std::vector<float> _scale;
     std::vector<float> _offset;
     std::vector<std::vector<float> > _clip;
     std::vector<std::vector<float> > _raw_clip;
+    std::vector<float> _target_delta_limit;
     float _raw_filter_alpha = 0.0f;
     bool _raw_filter_initialized = false;
+    bool _target_delta_initialized = false;
 };
 
 

@@ -44,13 +44,15 @@ def read_debug_csv(path: Path, grid_size: int) -> tuple[dict[str, str], list[int
     for line in lines:
         if not line:
             continue
-        if line == "values" or line == "unknown":
+        if line in ("values", "unknown", "confidence"):
             section = line
             continue
         if section == "unknown":
             row = [int(float(x)) for x in line.split(",") if x]
             if row:
                 unknown_rows.append(row)
+            continue
+        if section == "confidence":
             continue
         if section:
             continue

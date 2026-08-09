@@ -61,6 +61,15 @@ public:
 
     std::vector<float> action()
     {
+        std::vector<float> actions;
+        for(auto & term : _terms)
+        {
+            auto term_action = term->raw_actions();
+            actions.insert(actions.end(), term_action.begin(), term_action.end());
+        }
+        if(!actions.empty()) {
+            return actions;
+        }
         return _action;
     }
 

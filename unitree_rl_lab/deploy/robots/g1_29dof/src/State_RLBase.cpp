@@ -56,10 +56,10 @@ std::string leg_pair_values(const std::vector<float>& values)
     const std::array<std::pair<size_t, size_t>, 6> pairs = {{
         {0, 1},    // hip pitch
         {3, 4},    // hip roll
-        {7, 8},    // hip yaw
-        {11, 12},  // knee
-        {15, 16},  // ankle pitch
-        {19, 20},  // ankle roll
+        {5, 6},    // hip yaw
+        {7, 8},    // knee
+        {11, 12},  // ankle pitch
+        {15, 16},  // ankle roll
     }};
     const std::array<const char*, 6> names = {{
         "hp", "hr", "hy", "kn", "ap", "ar"
@@ -219,7 +219,9 @@ void State_RLBase::log_policy_diagnostics()
         return;
     }
 
-    const auto command = isaaclab::mdp::velocity_commands(env.get(), YAML::Node());
+    const std::vector<float> command(
+        env->last_base_velocity_command_observation.begin(),
+        env->last_base_velocity_command_observation.end());
     std::vector<float> height;
     if (env->cfg["observations"]["height_scan"]) {
         height = isaaclab::mdp::height_scan(

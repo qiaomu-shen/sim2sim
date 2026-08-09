@@ -9,6 +9,7 @@ cmake_install.cmake
 # Runtime logs and generated data
 /log/
 /logs/
+/backups/
 /deploy_lstm/robots/g1/log/
 *.log
 *.bin

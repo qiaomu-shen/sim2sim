@@ -59,6 +59,9 @@ public:
         episode_length = 0;
         has_last_nonzero_base_velocity_command = false;
         last_nonzero_base_velocity_command = {0.0f, 0.0f, 0.0f};
+        base_velocity_command_initialized = false;
+        current_base_velocity_command = {0.0f, 0.0f, 0.0f};
+        last_base_velocity_command_observation = {0.0f, 0.0f, 0.0f};
         robot->update();
         action_manager->reset();
         observation_manager->reset();
@@ -152,6 +155,9 @@ public:
     bool initializing_observation_manager = false;
     std::array<float, 3> last_nonzero_base_velocity_command = {0.0f, 0.0f, 0.0f};
     bool has_last_nonzero_base_velocity_command = false;
+    std::array<float, 3> current_base_velocity_command = {0.0f, 0.0f, 0.0f};
+    std::array<float, 3> last_base_velocity_command_observation = {0.0f, 0.0f, 0.0f};
+    bool base_velocity_command_initialized = false;
 };
 
 };

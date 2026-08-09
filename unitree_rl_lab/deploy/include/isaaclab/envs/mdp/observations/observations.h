@@ -211,53 +211,92 @@ REGISTER_OBSERVATION(velocity_commands)
     std::vector<float> obs(3);
     auto & joystick = env->robot->data.joystick;
 
-    const auto cfg = env->cfg["commands"]["base_velocity"]["ranges"];
+    const auto command_cfg = env->cfg["commands"]["base_velocity"];
+    const auto cfg = command_cfg["ranges"];
     const float deadzone =
-        env->cfg["commands"]["base_velocity"]["deadzone"].as<float>(0.0f);
+        command_cfg["deadzone"].as<float>(0.0f);
     const bool zero_on_deadzone =
-        env->cfg["commands"]["base_velocity"]["zero_command_on_deadzone"].as<bool>(false);
+        command_cfg["zero_command_on_deadzone"].as<bool>(false);
     const bool snap_to_limit =
-        env->cfg["commands"]["base_velocity"]["snap_to_limit_on_input"].as<bool>(false);
+        command_cfg["snap_to_limit_on_input"].as<bool>(false);
     const bool keep_last_nonzero_on_zero =
-        env->cfg["commands"]["base_velocity"]["keep_last_nonzero_on_zero_command"].as<bool>(false);
+        command_cfg["keep_last_nonzero_on_zero_command"].as<bool>(false);
 
     const float raw_x = joystick->ly();
     const float raw_y = -joystick->lx();
     const float raw_yaw = -joystick->rx();
 
+    std::array<float, 3> target = {0.0f, 0.0f, 0.0f};
     if (zero_on_deadzone &&
         std::abs(raw_x) < deadzone &&
         std::abs(raw_y) < deadzone &&
         std::abs(raw_yaw) < deadzone) {
         if (keep_last_nonzero_on_zero && env->has_last_nonzero_base_velocity_command) {
-            return std::vector<float>(
-                env->last_nonzero_base_velocity_command.begin(),
-                env->last_nonzero_base_velocity_command.end());
+            target = env->last_nonzero_base_velocity_command;
         }
-        return obs;
-    }
-
-    const std::array<float, 3> raw = {raw_x, raw_y, raw_yaw};
-    const std::array<const char*, 3> keys = {"lin_vel_x", "lin_vel_y", "ang_vel_z"};
-    for (size_t i = 0; i < obs.size(); ++i) {
-        const float lower = cfg[keys[i]][0].as<float>();
-        const float upper = cfg[keys[i]][1].as<float>();
-        if (snap_to_limit) {
-            if (raw[i] > deadzone && upper > 0.0f) {
-                obs[i] = upper;
-            } else if (raw[i] < -deadzone && lower < 0.0f) {
-                obs[i] = lower;
+    } else {
+        const std::array<float, 3> raw = {raw_x, raw_y, raw_yaw};
+        const std::array<const char*, 3> keys = {"lin_vel_x", "lin_vel_y", "ang_vel_z"};
+        for (size_t i = 0; i < target.size(); ++i) {
+            const float lower = cfg[keys[i]][0].as<float>();
+            const float upper = cfg[keys[i]][1].as<float>();
+            if (snap_to_limit) {
+                if (raw[i] > deadzone && upper > 0.0f) {
+                    target[i] = upper;
+                } else if (raw[i] < -deadzone && lower < 0.0f) {
+                    target[i] = lower;
+                }
+            } else {
+                target[i] = std::clamp(raw[i], lower, upper);
             }
-        } else {
-            obs[i] = std::clamp(raw[i], lower, upper);
         }
     }
 
-    for (float & command : obs) {
+    for (float & command : target) {
         if (std::abs(command) < deadzone) {
             command = 0.0f;
         }
     }
+
+    std::array<float, 3> slew_rate = {0.0f, 0.0f, 0.0f};
+    if (command_cfg["command_slew_rate"] &&
+        !command_cfg["command_slew_rate"].IsNull()) {
+        try {
+            const auto node = command_cfg["command_slew_rate"];
+            if (node.IsScalar()) {
+                const float value = std::max(0.0f, node.as<float>());
+                slew_rate = {value, value, value};
+            } else {
+                const auto values = node.as<std::vector<float>>();
+                for (size_t i = 0; i < slew_rate.size() && i < values.size(); ++i) {
+                    slew_rate[i] = std::max(0.0f, values[i]);
+                }
+            }
+        } catch (const std::exception&) {
+        }
+    }
+
+    if (!env->base_velocity_command_initialized) {
+        env->current_base_velocity_command = {0.0f, 0.0f, 0.0f};
+        env->base_velocity_command_initialized = true;
+    }
+
+    for (size_t i = 0; i < obs.size(); ++i) {
+        float command = target[i];
+        if (slew_rate[i] > 0.0f) {
+            const float max_delta = slew_rate[i] * env->step_dt;
+            const float delta = target[i] - env->current_base_velocity_command[i];
+            command = env->current_base_velocity_command[i] +
+                std::clamp(delta, -max_delta, max_delta);
+            if (std::abs(command) < deadzone && std::abs(target[i]) < deadzone) {
+                command = 0.0f;
+            }
+        }
+        env->current_base_velocity_command[i] = command;
+        obs[i] = command;
+    }
+
+    env->last_base_velocity_command_observation = {obs[0], obs[1], obs[2]};
 
     if (std::abs(obs[0]) >= deadzone ||
         std::abs(obs[1]) >= deadzone ||
