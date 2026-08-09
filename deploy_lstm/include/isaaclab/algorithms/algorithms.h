@@ -206,7 +206,25 @@ public:
         std::fill(gate_state.begin(), gate_state.end(), 0.0f);
     }
 
+#ifdef MJLAB_ORT_RUNNER_TESTING
+    size_t recurrent_nonzero_count_for_testing() const
+    {
+        return nonzero_count(h_state) +
+               nonzero_count(c_state) +
+               nonzero_count(z_state) +
+               nonzero_count(gate_state);
+    }
+#endif
+
 private:
+    static size_t nonzero_count(const std::vector<float>& values)
+    {
+        return static_cast<size_t>(std::count_if(
+            values.begin(),
+            values.end(),
+            [](float value) { return std::isfinite(value) && std::abs(value) > 1.0e-8f; }));
+    }
+
     std::vector<float> fail_safe_zero_action(const std::string& reason)
     {
         std::cerr << "[OrtRunner safety] " << reason

@@ -68,6 +68,10 @@ struct ArticulationData
 
     // Runtime camera observations keyed by camera name, e.g. "front_depth".
     std::unordered_map<std::string, std::vector<float>> camera_frames;
+
+    // SlowLatent FootEventMemory compact summary.  The policy consumes the
+    // 80-dim summary after the 93-dim stair_latent vector.
+    std::vector<float> foot_event_summary = std::vector<float>(80, 0.0f);
 };
 
 class Articulation

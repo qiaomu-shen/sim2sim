@@ -280,7 +280,7 @@ REGISTER_OBSERVATION(gait_phase)
 }
 
 // ────────────────────────────────────────────────────────────────────────
-//  stair_latent  observation  (91‑dim deployable proprioceptive features)
+//  stair_latent observation
 // ────────────────────────────────────────────────────────────────────────
 //
 //  Feature order MUST match
@@ -308,7 +308,7 @@ REGISTER_OBSERVATION(gait_phase)
 //    20. leg_joint_vel_delta          (12)
 //    21. command_lin_x                (1)
 //  ─────────────────────────────────────────
-//  Total: 91
+//  Total: 91, or 93 when include_gait_phase=true
 // ────────────────────────────────────────────────────────────────────────
 
 REGISTER_OBSERVATION(stair_latent)
@@ -475,9 +475,25 @@ REGISTER_OBSERVATION(stair_latent)
     // ── Mark cache as valid for next call ──
     data.stair_latent_cache_valid = true;
 
-    // ── Assemble final 91‑dim vector ──
+    bool include_gait_phase = false;
+    try {
+        include_gait_phase = params["include_gait_phase"].as<bool>(false);
+    } catch (const std::exception&) {
+    }
+
+    float gait_period = 0.6f;
+    try {
+        gait_period = params["gait_period"].as<float>(0.6f);
+    } catch (const std::exception&) {
+        try {
+            gait_period = params["period"].as<float>(0.6f);
+        } catch (const std::exception&) {
+        }
+    }
+
+    // ── Assemble final 91/93-dim vector ──
     std::vector<float> out;
-    out.reserve(91);
+    out.reserve(include_gait_phase ? 93 : 91);
 
     //  1   projected_gravity (3)
     out.insert(out.end(), pg.begin(), pg.end());
@@ -521,8 +537,46 @@ REGISTER_OBSERVATION(stair_latent)
     out.insert(out.end(), leg_joint_vel_delta.begin(), leg_joint_vel_delta.end());
     // 21   command_lin_x (1)
     out.push_back(cmd_lin_x);
+    if (include_gait_phase) {
+        const float period = std::max(gait_period, 1.0e-6f);
+        float phase = 0.0f;
+        if (env->cfg["use_training_step_semantics"].as<bool>(false)) {
+            phase =
+                std::fmod(static_cast<float>(env->episode_length) * env->step_dt, period)
+                / period;
+        } else {
+            phase = env->global_phase;
+        }
+        const float cmd_norm = std::sqrt(
+            velocity_command[0] * velocity_command[0] +
+            velocity_command[1] * velocity_command[1] +
+            velocity_command[2] * velocity_command[2]);
+        if (cmd_norm < 0.1f) {
+            out.push_back(0.0f);
+            out.push_back(0.0f);
+        } else {
+            out.push_back(std::sin(phase * 2.0f * static_cast<float>(M_PI)));
+            out.push_back(std::cos(phase * 2.0f * static_cast<float>(M_PI)));
+        }
+    }
 
     return out;
+}
+
+REGISTER_OBSERVATION(foot_event_memory)
+{
+    int summary_dim = 80;
+    try {
+        summary_dim = params["summary_dim"].as<int>(80);
+    } catch (const std::exception&) {
+    }
+    summary_dim = std::max(0, summary_dim);
+
+    auto& summary = env->robot->data.foot_event_summary;
+    if (static_cast<int>(summary.size()) != summary_dim) {
+        return std::vector<float>(summary_dim, 0.0f);
+    }
+    return summary;
 }
 
 // ────────────────────────────────────────────────────────────────────────

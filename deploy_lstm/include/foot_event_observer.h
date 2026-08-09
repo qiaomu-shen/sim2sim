@@ -25,10 +25,18 @@
 namespace mjlab::diagnostics
 {
 
+struct FootEventDetectorConfig
+{
+    std::string name;
+    std::filesystem::path model_path;
+    std::string input_name = "obs_history";
+    std::string output_name = "event_logits";
+    std::string activation = "sigmoid";
+};
+
 struct FootEventObserverConfig
 {
     bool enabled = false;
-    std::filesystem::path model_path;
     std::filesystem::path event_path;
     std::filesystem::path frame_path;
     bool frame_log_enabled = false;
@@ -37,9 +45,10 @@ struct FootEventObserverConfig
     int feature_dim = 93;
     int history_frames = 0;
     bool history_oldest_first = true;
-    std::string input_name;
-    std::string output_name;
-    std::string activation = "sigmoid";
+    FootEventDetectorConfig footprint_touchdown_detector;
+    FootEventDetectorConfig toe_riser_detector;
+    int left_contact_index = 0;
+    int right_contact_index = 1;
     int left_touchdown_index = 2;
     int right_touchdown_index = 3;
     int left_toe_riser_index = 4;
@@ -56,6 +65,20 @@ struct FootEventObserverConfig
     int touchdown_cooldown_frames = 6;
     int toe_riser_cooldown_frames = 6;
     double startup_ignore_s = 0.5;
+};
+
+struct FootEventObserverOutput
+{
+    float left_contact_prob = 0.0f;
+    float right_contact_prob = 0.0f;
+    float left_touchdown_prob = 0.0f;
+    float right_touchdown_prob = 0.0f;
+    float left_toe_riser_prob = 0.0f;
+    float right_toe_riser_prob = 0.0f;
+    bool left_touchdown_event = false;
+    bool right_touchdown_event = false;
+    bool left_toe_riser_event = false;
+    bool right_toe_riser_event = false;
 };
 
 struct FootEventObserverFrame
@@ -94,7 +117,9 @@ public:
 
     bool enabled() const
     {
-        return cfg_.enabled && session_ != nullptr && event_stream_.is_open();
+        return cfg_.enabled &&
+               footprint_touchdown_.session != nullptr &&
+               toe_riser_.session != nullptr;
     }
 
     bool open()
@@ -104,25 +129,20 @@ public:
         if (!cfg_.enabled) {
             return false;
         }
-        if (!std::filesystem::exists(cfg_.model_path)) {
-            cfg_.enabled = false;
-            return false;
-        }
 
         try {
             ort_env_ = std::make_unique<Ort::Env>(
                 ORT_LOGGING_LEVEL_WARNING,
                 "foot_event_observer");
             session_options_.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
-            session_ = std::make_unique<Ort::Session>(
-                *ort_env_,
-                cfg_.model_path.c_str(),
-                session_options_);
-            inspect_model();
+            footprint_touchdown_.cfg = cfg_.footprint_touchdown_detector;
+            toe_riser_.cfg = cfg_.toe_riser_detector;
+            open_detector(footprint_touchdown_);
+            open_detector(toe_riser_);
+            sync_history_contract();
         } catch (const std::exception&) {
             cfg_.enabled = false;
-            session_.reset();
-            ort_env_.reset();
+            close();
             return false;
         }
 
@@ -130,16 +150,12 @@ public:
             std::filesystem::create_directories(cfg_.event_path.parent_path());
         }
         event_stream_.open(cfg_.event_path, std::ios::out | std::ios::trunc);
-        if (!event_stream_) {
-            cfg_.enabled = false;
-            session_.reset();
-            ort_env_.reset();
-            return false;
+        if (event_stream_) {
+            event_stream_.setf(std::ios::fixed);
+            event_stream_ << std::setprecision(7);
+            write_event_header();
+            event_stream_.flush();
         }
-        event_stream_.setf(std::ios::fixed);
-        event_stream_ << std::setprecision(7);
-        write_event_header();
-        event_stream_.flush();
 
         if (cfg_.frame_log_enabled) {
             if (cfg_.frame_path.has_parent_path()) {
@@ -167,16 +183,9 @@ public:
             frame_stream_.flush();
             frame_stream_.close();
         }
-        session_.reset();
+        footprint_touchdown_ = DetectorRuntime{};
+        toe_riser_ = DetectorRuntime{};
         ort_env_.reset();
-        input_name_ptrs_.clear();
-        output_name_ptrs_.clear();
-        input_names_.clear();
-        output_names_.clear();
-        input_shapes_.clear();
-        output_shapes_.clear();
-        input_sizes_.clear();
-        output_sizes_.clear();
     }
 
     void reset()
@@ -184,6 +193,7 @@ public:
         feature_history_.clear();
         event_count_ = 0;
         frame_count_ = 0;
+        last_features_.clear();
         cache_valid_ = false;
         prev_toe_vel_valid_ = false;
         prev_base_ang_vel_ = Eigen::Vector3f::Zero();
@@ -196,15 +206,18 @@ public:
         right_touchdown_ = EventState{};
         left_toe_riser_ = EventState{};
         right_toe_riser_ = EventState{};
+        latest_output_ = FootEventObserverOutput{};
     }
 
-    void update(const FootEventObserverFrame& frame)
+    FootEventObserverOutput update(const FootEventObserverFrame& frame)
     {
+        FootEventObserverOutput output;
         if (!enabled()) {
-            return;
+            return output;
         }
 
         const std::vector<float> features = make_stair_latent_features(frame);
+        last_features_ = features;
         feature_history_.push_back(features);
         while (static_cast<int>(feature_history_.size()) > history_frames_) {
             feature_history_.pop_front();
@@ -213,28 +226,48 @@ public:
         std::vector<float> input_data = make_input_tensor(features);
         sanitize(input_data);
 
-        std::vector<float> probabilities;
+        std::vector<float> footprint_probabilities;
+        std::vector<float> toe_probabilities;
         try {
-            probabilities = run_model(input_data);
-        } catch (const std::exception&) {
+            footprint_probabilities = run_model(footprint_touchdown_, input_data);
+            toe_probabilities = run_model(toe_riser_, input_data);
+        } catch (const std::exception& e) {
             cfg_.enabled = false;
-            return;
+            close();
+            throw std::runtime_error(
+                "Foot event observer inference failed: " + std::string(e.what()));
         }
 
-        const float left_td = probability_at(probabilities, cfg_.left_touchdown_index);
-        const float right_td = probability_at(probabilities, cfg_.right_touchdown_index);
-        const float left_toe = probability_at(probabilities, cfg_.left_toe_riser_index);
-        const float right_toe = probability_at(probabilities, cfg_.right_toe_riser_index);
+        const float left_contact =
+            probability_at(footprint_probabilities, cfg_.left_contact_index);
+        const float right_contact =
+            probability_at(footprint_probabilities, cfg_.right_contact_index);
+        const float left_td =
+            probability_at(footprint_probabilities, cfg_.left_touchdown_index);
+        const float right_td =
+            probability_at(footprint_probabilities, cfg_.right_touchdown_index);
+        const float left_toe =
+            probability_at(toe_probabilities, cfg_.left_toe_riser_index);
+        const float right_toe =
+            probability_at(toe_probabilities, cfg_.right_toe_riser_index);
+        output.left_contact_prob = left_contact;
+        output.right_contact_prob = right_contact;
+        output.left_touchdown_prob = left_td;
+        output.right_touchdown_prob = right_td;
+        output.left_toe_riser_prob = left_toe;
+        output.right_toe_riser_prob = right_toe;
+        latest_output_ = output;
 
         if (cfg_.frame_log_enabled && frame_stream_.is_open()) {
             write_frame(frame, left_td, right_td, left_toe, right_toe);
         }
 
         if (frame.time_s < cfg_.startup_ignore_s) {
-            return;
+            latest_output_ = output;
+            return output;
         }
 
-        update_event(
+        output.left_touchdown_event = update_event(
             "observer_touchdown",
             "left",
             left_td,
@@ -250,7 +283,7 @@ public:
             right_td,
             left_toe,
             right_toe);
-        update_event(
+        output.right_touchdown_event = update_event(
             "observer_touchdown",
             "right",
             right_td,
@@ -266,7 +299,7 @@ public:
             right_td,
             left_toe,
             right_toe);
-        update_event(
+        output.left_toe_riser_event = update_event(
             "observer_toe_riser",
             "left",
             left_toe,
@@ -282,7 +315,7 @@ public:
             right_td,
             left_toe,
             right_toe);
-        update_event(
+        output.right_toe_riser_event = update_event(
             "observer_toe_riser",
             "right",
             right_toe,
@@ -298,7 +331,26 @@ public:
             right_td,
             left_toe,
             right_toe);
+        latest_output_ = output;
+        return output;
     }
+
+    FootEventObserverOutput latest_output() const
+    {
+        return latest_output_;
+    }
+
+#ifdef MJLAB_FOOT_EVENT_OBSERVER_TESTING
+    size_t history_size_for_testing() const
+    {
+        return feature_history_.size();
+    }
+
+    const std::vector<float>& last_features_for_testing() const
+    {
+        return last_features_;
+    }
+#endif
 
 private:
     struct EventState
@@ -306,6 +358,25 @@ private:
         int high_frames = 0;
         bool armed = true;
         int last_event_step = -1000000;
+    };
+
+    struct DetectorRuntime
+    {
+        FootEventDetectorConfig cfg;
+        std::unique_ptr<Ort::Session> session;
+        std::vector<std::string> input_names;
+        std::vector<std::string> output_names;
+        std::vector<const char*> input_name_ptrs;
+        std::vector<const char*> output_name_ptrs;
+        std::vector<std::vector<int64_t>> input_shapes;
+        std::vector<std::vector<int64_t>> output_shapes;
+        std::vector<size_t> input_sizes;
+        std::vector<size_t> output_sizes;
+        std::vector<std::vector<float>> state_inputs;
+        int input_index = 0;
+        int output_index = 0;
+        size_t input_size = 0;
+        size_t output_size = 0;
     };
 
     static size_t tensor_size(const std::vector<int64_t>& shape)
@@ -396,77 +467,113 @@ private:
         return z / (1.0f + z);
     }
 
-    void inspect_model()
+    void open_detector(DetectorRuntime& detector)
     {
-        input_names_.clear();
-        output_names_.clear();
-        input_shapes_.clear();
-        output_shapes_.clear();
-        input_sizes_.clear();
-        output_sizes_.clear();
+        if (detector.cfg.name.empty()) {
+            throw std::runtime_error("Foot event detector name is empty.");
+        }
+        if (!std::filesystem::exists(detector.cfg.model_path)) {
+            throw std::runtime_error(
+                "Foot event detector model not found: " +
+                detector.cfg.model_path.string());
+        }
+        detector.session = std::make_unique<Ort::Session>(
+            *ort_env_,
+            detector.cfg.model_path.c_str(),
+            session_options_);
+        inspect_detector(detector);
+    }
 
-        for (size_t i = 0; i < session_->GetInputCount(); ++i) {
-            Ort::TypeInfo input_type = session_->GetInputTypeInfo(i);
+    void inspect_detector(DetectorRuntime& detector)
+    {
+        detector.input_names.clear();
+        detector.output_names.clear();
+        detector.input_shapes.clear();
+        detector.output_shapes.clear();
+        detector.input_sizes.clear();
+        detector.output_sizes.clear();
+
+        for (size_t i = 0; i < detector.session->GetInputCount(); ++i) {
+            Ort::TypeInfo input_type = detector.session->GetInputTypeInfo(i);
             auto shape = normalize_shape(
                 input_type.GetTensorTypeAndShapeInfo().GetShape());
-            input_shapes_.push_back(shape);
-            input_sizes_.push_back(tensor_size(shape));
-            auto input_name = session_->GetInputNameAllocated(i, allocator_);
-            input_names_.push_back(input_name.get());
+            detector.input_shapes.push_back(shape);
+            detector.input_sizes.push_back(tensor_size(shape));
+            auto input_name = detector.session->GetInputNameAllocated(i, allocator_);
+            detector.input_names.push_back(input_name.get());
         }
 
-        for (size_t i = 0; i < session_->GetOutputCount(); ++i) {
-            Ort::TypeInfo output_type = session_->GetOutputTypeInfo(i);
+        for (size_t i = 0; i < detector.session->GetOutputCount(); ++i) {
+            Ort::TypeInfo output_type = detector.session->GetOutputTypeInfo(i);
             auto shape = normalize_shape(
                 output_type.GetTensorTypeAndShapeInfo().GetShape());
-            output_shapes_.push_back(shape);
-            output_sizes_.push_back(tensor_size(shape));
-            auto output_name = session_->GetOutputNameAllocated(i, allocator_);
-            output_names_.push_back(output_name.get());
+            detector.output_shapes.push_back(shape);
+            detector.output_sizes.push_back(tensor_size(shape));
+            auto output_name = detector.session->GetOutputNameAllocated(i, allocator_);
+            detector.output_names.push_back(output_name.get());
         }
 
-        input_index_ = find_name(input_names_, cfg_.input_name);
-        if (input_index_ < 0) {
-            input_index_ = first_non_state_name(input_names_, looks_like_state_input);
+        detector.input_index = find_name(detector.input_names, detector.cfg.input_name);
+        if (detector.input_index < 0) {
+            detector.input_index =
+                first_non_state_name(detector.input_names, looks_like_state_input);
         }
-        output_index_ = find_name(output_names_, cfg_.output_name);
-        if (output_index_ < 0) {
-            output_index_ = first_non_state_name(output_names_, looks_like_state_output);
-        }
-
-        input_name_ptrs_.clear();
-        input_name_ptrs_.reserve(input_names_.size());
-        for (const auto& name : input_names_) {
-            input_name_ptrs_.push_back(name.c_str());
-        }
-        output_name_ptrs_.clear();
-        output_name_ptrs_.reserve(output_names_.size());
-        for (const auto& name : output_names_) {
-            output_name_ptrs_.push_back(name.c_str());
+        detector.output_index = find_name(detector.output_names, detector.cfg.output_name);
+        if (detector.output_index < 0) {
+            detector.output_index =
+                first_non_state_name(detector.output_names, looks_like_state_output);
         }
 
-        input_size_ = input_sizes_.at(input_index_);
-        output_size_ = output_sizes_.at(output_index_);
-        if (input_size_ == 0 || output_size_ == 0) {
-            throw std::runtime_error("Empty foot event observer ONNX tensor.");
+        detector.input_name_ptrs.clear();
+        detector.input_name_ptrs.reserve(detector.input_names.size());
+        for (const auto& name : detector.input_names) {
+            detector.input_name_ptrs.push_back(name.c_str());
+        }
+        detector.output_name_ptrs.clear();
+        detector.output_name_ptrs.reserve(detector.output_names.size());
+        for (const auto& name : detector.output_names) {
+            detector.output_name_ptrs.push_back(name.c_str());
         }
 
-        state_inputs_.clear();
-        state_inputs_.resize(input_names_.size());
-        for (size_t i = 0; i < input_names_.size(); ++i) {
-            if (static_cast<int>(i) == input_index_) {
+        detector.input_size = detector.input_sizes.at(detector.input_index);
+        detector.output_size = detector.output_sizes.at(detector.output_index);
+        if (detector.input_size == 0 || detector.output_size == 0) {
+            throw std::runtime_error(
+                "Empty foot event observer ONNX tensor in " + detector.cfg.name);
+        }
+
+        detector.state_inputs.clear();
+        detector.state_inputs.resize(detector.input_names.size());
+        for (size_t i = 0; i < detector.input_names.size(); ++i) {
+            if (static_cast<int>(i) == detector.input_index) {
                 continue;
             }
-            state_inputs_[i].resize(input_sizes_[i], 0.0f);
+            detector.state_inputs[i].resize(detector.input_sizes[i], 0.0f);
         }
+    }
 
+    void sync_history_contract()
+    {
         const int feature_dim = std::max(1, cfg_.feature_dim);
-        if (cfg_.history_frames > 0) {
-            history_frames_ = cfg_.history_frames;
-        } else if (input_size_ % static_cast<size_t>(feature_dim) == 0) {
-            history_frames_ = static_cast<int>(input_size_ / feature_dim);
-        } else {
-            history_frames_ = 1;
+        const auto derive_history = [feature_dim](const DetectorRuntime& detector) {
+            if (detector.input_size % static_cast<size_t>(feature_dim) != 0) {
+                throw std::runtime_error(
+                    "Detector input size is not divisible by feature_dim: " +
+                    detector.cfg.name);
+            }
+            return static_cast<int>(detector.input_size / static_cast<size_t>(feature_dim));
+        };
+        const int footprint_history = derive_history(footprint_touchdown_);
+        const int toe_history = derive_history(toe_riser_);
+        if (footprint_history != toe_history) {
+            throw std::runtime_error("Foot event detector history lengths differ.");
+        }
+        history_frames_ = cfg_.history_frames > 0
+            ? cfg_.history_frames
+            : footprint_history;
+        if (history_frames_ != footprint_history || history_frames_ != toe_history) {
+            throw std::runtime_error(
+                "Configured foot event history length does not match detector ONNX input.");
         }
         history_frames_ = std::max(1, history_frames_);
     }
@@ -603,7 +710,10 @@ private:
     std::vector<float> make_input_tensor(const std::vector<float>& current_features)
     {
         std::vector<float> input;
-        input.reserve(input_size_);
+        const size_t expected_size =
+            static_cast<size_t>(history_frames_) *
+            static_cast<size_t>(std::max(1, cfg_.feature_dim));
+        input.reserve(expected_size);
 
         std::deque<std::vector<float>> padded = feature_history_;
         while (static_cast<int>(padded.size()) < history_frames_) {
@@ -620,10 +730,10 @@ private:
             }
         }
 
-        if (input.size() < input_size_) {
-            input.resize(input_size_, 0.0f);
-        } else if (input.size() > input_size_) {
-            input.resize(input_size_);
+        if (input.size() < expected_size) {
+            input.resize(expected_size, 0.0f);
+        } else if (input.size() > expected_size) {
+            input.resize(expected_size);
         }
         return input;
     }
@@ -637,83 +747,94 @@ private:
         }
     }
 
-    std::vector<float> run_model(std::vector<float>& input_data)
+    std::vector<float> run_model(DetectorRuntime& detector, std::vector<float>& input_data)
     {
         auto memory_info =
             Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
         std::vector<Ort::Value> input_tensors;
-        input_tensors.reserve(input_names_.size());
-        for (size_t i = 0; i < input_names_.size(); ++i) {
-            if (static_cast<int>(i) == input_index_) {
+        input_tensors.reserve(detector.input_names.size());
+        for (size_t i = 0; i < detector.input_names.size(); ++i) {
+            if (static_cast<int>(i) == detector.input_index) {
                 input_tensors.push_back(Ort::Value::CreateTensor<float>(
                     memory_info,
                     input_data.data(),
                     input_data.size(),
-                    input_shapes_[i].data(),
-                    input_shapes_[i].size()));
+                    detector.input_shapes[i].data(),
+                    detector.input_shapes[i].size()));
             } else {
                 input_tensors.push_back(Ort::Value::CreateTensor<float>(
                     memory_info,
-                    state_inputs_[i].data(),
-                    state_inputs_[i].size(),
-                    input_shapes_[i].data(),
-                    input_shapes_[i].size()));
+                    detector.state_inputs[i].data(),
+                    detector.state_inputs[i].size(),
+                    detector.input_shapes[i].data(),
+                    detector.input_shapes[i].size()));
             }
         }
 
-        auto output_tensors = session_->Run(
+        auto output_tensors = detector.session->Run(
             Ort::RunOptions{nullptr},
-            input_name_ptrs_.data(),
+            detector.input_name_ptrs.data(),
             input_tensors.data(),
             input_tensors.size(),
-            output_name_ptrs_.data(),
-            output_name_ptrs_.size());
+            detector.output_name_ptrs.data(),
+            detector.output_name_ptrs.size());
 
         auto* output_data =
-            output_tensors[output_index_].GetTensorMutableData<float>();
-        std::vector<float> values(output_data, output_data + output_size_);
-        update_state_inputs(output_tensors);
-        apply_activation(values);
+            output_tensors[detector.output_index].GetTensorMutableData<float>();
+        std::vector<float> values(output_data, output_data + detector.output_size);
+        update_state_inputs(detector, output_tensors);
+        apply_activation(detector, values);
         return values;
     }
 
-    void update_state_inputs(std::vector<Ort::Value>& output_tensors)
+    void update_state_inputs(
+        DetectorRuntime& detector,
+        std::vector<Ort::Value>& output_tensors)
     {
-        for (size_t i = 0; i < input_names_.size(); ++i) {
-            if (static_cast<int>(i) == input_index_ || state_inputs_[i].empty()) {
+        for (size_t i = 0; i < detector.input_names.size(); ++i) {
+            if (static_cast<int>(i) == detector.input_index ||
+                detector.state_inputs[i].empty()) {
                 continue;
             }
-            const int out_idx = matching_state_output(input_names_[i]);
+            const int out_idx = matching_state_output(detector, detector.input_names[i]);
             if (out_idx < 0 ||
-                output_sizes_[out_idx] != state_inputs_[i].size()) {
+                detector.output_sizes[out_idx] != detector.state_inputs[i].size()) {
                 continue;
             }
             auto* out = output_tensors[out_idx].GetTensorMutableData<float>();
-            std::copy(out, out + state_inputs_[i].size(), state_inputs_[i].begin());
+            std::copy(
+                out,
+                out + detector.state_inputs[i].size(),
+                detector.state_inputs[i].begin());
         }
     }
 
-    int matching_state_output(const std::string& input_name) const
+    int matching_state_output(
+        const DetectorRuntime& detector,
+        const std::string& input_name) const
     {
         if (input_name.size() > 3 &&
             input_name.substr(input_name.size() - 3) == "_in") {
             std::string output_name = input_name;
             output_name.replace(output_name.size() - 3, 3, "_out");
-            const int idx = find_name(output_names_, output_name);
+            const int idx = find_name(detector.output_names, output_name);
             if (idx >= 0) {
                 return idx;
             }
         }
-        const int exact = find_name(output_names_, input_name);
+        const int exact = find_name(detector.output_names, input_name);
         return exact;
     }
 
-    void apply_activation(std::vector<float>& values) const
+    void apply_activation(
+        const DetectorRuntime& detector,
+        std::vector<float>& values) const
     {
-        if (cfg_.activation == "none" || cfg_.activation == "identity") {
+        if (detector.cfg.activation == "none" ||
+            detector.cfg.activation == "identity") {
             return;
         }
-        if (cfg_.activation == "softmax") {
+        if (detector.cfg.activation == "softmax") {
             const float max_value =
                 *std::max_element(values.begin(), values.end());
             float denom = 0.0f;
@@ -728,7 +849,7 @@ private:
             }
             return;
         }
-        if (cfg_.activation == "auto") {
+        if (detector.cfg.activation == "auto") {
             const bool already_probabilities = std::all_of(
                 values.begin(),
                 values.end(),
@@ -757,7 +878,7 @@ private:
         return value >= 0.0f ? value : fallback;
     }
 
-    void update_event(
+    bool update_event(
         const char* event_type,
         const char* foot,
         float probability,
@@ -781,14 +902,14 @@ private:
             state.high_frames += 1;
         } else {
             state.high_frames = 0;
-            return;
+            return false;
         }
 
         const bool confirmed = state.high_frames >= std::max(1, confirm_frames);
         const bool cooled_down =
             frame.step - state.last_event_step >= std::max(1, cooldown_frames);
         if (!state.armed || !confirmed || !cooled_down) {
-            return;
+            return false;
         }
 
         write_event(
@@ -804,10 +925,14 @@ private:
             right_toe);
         state.armed = false;
         state.last_event_step = frame.step;
+        return true;
     }
 
     void write_event_header()
     {
+        if (!event_stream_.is_open()) {
+            return;
+        }
         event_stream_
             << "event_type,foot,event_step,event_tick_ms,event_time_s"
             << ",state,phase,probability,threshold,output_index"
@@ -815,16 +940,22 @@ private:
             << ",foot_pos_b_x,foot_pos_b_y,foot_pos_b_z"
             << ",toe_pos_b_x,toe_pos_b_y,toe_pos_b_z"
             << ",heel_pos_b_x,heel_pos_b_y,heel_pos_b_z"
+            << ",left_contact_prob,right_contact_prob"
             << ",left_touchdown_prob,right_touchdown_prob"
             << ",left_toe_riser_prob,right_toe_riser_prob"
-            << ",model_path,input_name,output_name\n";
+            << ",footprint_touchdown_model_path,toe_riser_model_path"
+            << ",footprint_output_name,toe_output_name\n";
     }
 
     void write_frame_header()
     {
+        if (!frame_stream_.is_open()) {
+            return;
+        }
         frame_stream_
             << "state,step,time_s,lowstate_tick_ms,phase"
             << ",cmd_x,cmd_y,cmd_yaw,stick_ly,stick_lx,stick_rx"
+            << ",left_contact_prob,right_contact_prob"
             << ",left_touchdown_prob,right_touchdown_prob"
             << ",left_toe_riser_prob,right_toe_riser_prob\n";
     }
@@ -841,6 +972,9 @@ private:
         float left_toe,
         float right_toe)
     {
+        if (!event_stream_.is_open()) {
+            return;
+        }
         const bool left = std::string(foot) == "left";
         const Eigen::Vector3f toe =
             left ? frame.left_toe_pos_b : frame.right_toe_pos_b;
@@ -869,13 +1003,16 @@ private:
         append_vec3(event_stream_, toe);
         append_vec3(event_stream_, heel);
         event_stream_
+            << ',' << latest_output_.left_contact_prob
+            << ',' << latest_output_.right_contact_prob
             << ',' << left_td
             << ',' << right_td
             << ',' << left_toe
             << ',' << right_toe
-            << ',' << cfg_.model_path.string()
-            << ',' << input_names_.at(input_index_)
-            << ',' << output_names_.at(output_index_)
+            << ',' << footprint_touchdown_.cfg.model_path.string()
+            << ',' << toe_riser_.cfg.model_path.string()
+            << ',' << footprint_touchdown_.output_names.at(footprint_touchdown_.output_index)
+            << ',' << toe_riser_.output_names.at(toe_riser_.output_index)
             << '\n';
 
         event_count_ += 1;
@@ -891,6 +1028,9 @@ private:
         float left_toe,
         float right_toe)
     {
+        if (!frame_stream_.is_open()) {
+            return;
+        }
         frame_stream_
             << frame.state
             << ',' << frame.step
@@ -903,6 +1043,8 @@ private:
             << ',' << frame.joystick[0]
             << ',' << frame.joystick[1]
             << ',' << frame.joystick[2]
+            << ',' << latest_output_.left_contact_prob
+            << ',' << latest_output_.right_contact_prob
             << ',' << left_td
             << ',' << right_td
             << ',' << left_toe
@@ -917,22 +1059,9 @@ private:
     FootEventObserverConfig cfg_;
     std::unique_ptr<Ort::Env> ort_env_;
     Ort::SessionOptions session_options_;
-    std::unique_ptr<Ort::Session> session_;
     Ort::AllocatorWithDefaultOptions allocator_;
-
-    std::vector<std::string> input_names_;
-    std::vector<std::string> output_names_;
-    std::vector<const char*> input_name_ptrs_;
-    std::vector<const char*> output_name_ptrs_;
-    std::vector<std::vector<int64_t>> input_shapes_;
-    std::vector<std::vector<int64_t>> output_shapes_;
-    std::vector<size_t> input_sizes_;
-    std::vector<size_t> output_sizes_;
-    std::vector<std::vector<float>> state_inputs_;
-    int input_index_ = 0;
-    int output_index_ = 0;
-    size_t input_size_ = 0;
-    size_t output_size_ = 0;
+    DetectorRuntime footprint_touchdown_;
+    DetectorRuntime toe_riser_;
     int history_frames_ = 1;
 
     std::ofstream event_stream_;
@@ -941,6 +1070,7 @@ private:
     int frame_count_ = 0;
 
     std::deque<std::vector<float>> feature_history_;
+    std::vector<float> last_features_;
     bool cache_valid_ = false;
     bool prev_toe_vel_valid_ = false;
     int last_step_ = -1;
@@ -956,6 +1086,7 @@ private:
     EventState right_touchdown_;
     EventState left_toe_riser_;
     EventState right_toe_riser_;
+    FootEventObserverOutput latest_output_;
 };
 
 }  // namespace mjlab::diagnostics

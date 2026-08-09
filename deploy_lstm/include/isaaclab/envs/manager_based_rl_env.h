@@ -9,6 +9,8 @@
 #include "isaaclab/manager/action_manager.h"
 #include "isaaclab/assets/articulation/articulation.h"
 #include "isaaclab/algorithms/algorithms.h"
+#include <algorithm>
+#include <functional>
 #include <iostream>
 #include "isaaclab/utils/utils.h"
 
@@ -58,15 +60,26 @@ public:
         // instead of garbage from a previous policy invocation.
         robot->data.stair_latent_cache_valid = false;
         robot->data.prev_toe_vel_valid = false;
+        if (robot->data.foot_event_summary.size() != 80) {
+            robot->data.foot_event_summary.assign(80, 0.0f);
+        } else {
+            std::fill(
+                robot->data.foot_event_summary.begin(),
+                robot->data.foot_event_summary.end(),
+                0.0f);
+        }
 
         action_manager->reset();
         observation_manager->reset();
         if (alg) {
             alg->reset();
         }
+        if (reset_callback) {
+            reset_callback();
+        }
     }
 
-    void step()
+    void step(const std::function<void()>& before_observation = nullptr)
     {
         const bool use_training_step_semantics =
             cfg["use_training_step_semantics"].as<bool>(false);
@@ -75,6 +88,9 @@ public:
             episode_length += 1;
         }
         robot->update();
+        if (before_observation) {
+            before_observation();
+        }
         auto obs = observation_manager->compute();
         auto action = alg->act(obs);
         action_manager->process_action(action);
@@ -93,6 +109,7 @@ public:
     std::unique_ptr<ActionManager> action_manager;
     std::shared_ptr<Articulation> robot;
     std::unique_ptr<Algorithms> alg;
+    std::function<void()> reset_callback;
     long episode_length = 0;
     float global_phase = 0.0f;
 };

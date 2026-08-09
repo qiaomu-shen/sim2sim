@@ -43,6 +43,7 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
         deploy_cfg,
         robot
     );
+    env->reset_callback = [this]() { reset_foot_event_runtime(); };
 
     if (deploy_cfg["camera"] && deploy_cfg["camera"]["front_depth"]) {
         const auto camera_cfg = deploy_cfg["camera"]["front_depth"];

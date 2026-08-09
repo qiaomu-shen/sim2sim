@@ -5,7 +5,8 @@
 # observation groups:
 #
 #   actor_obs  – standard blind proprioception (490 dim = 98 × history=5)
-#   latent_obs – stair-focused deployable features (91 dim, no history)
+#   latent_obs – stair-focused deployable features (173 dim, no history)
+#                = stair_latent 93 + FootEventMemory summary 80
 #
 # The ONNX model additionally consumes four persistent state tensors
 # (h_in, c_in, z_in, gate_state_in) that are managed internally by the
@@ -58,38 +59,115 @@ diagnostics:
     imu_jerk_threshold: 80.0
   foot_event_observer:
     enabled: true
-    model_path: /home/ubt2204/work/mjlab/eval_outputs/stair_stage2/model51000_seed42_foot_event_detector_online_v7/best.onnx
     path: foot_event_observer_events.csv
     flush_interval_events: 10
     feature_dim: 93
-    history_frames: 16
+    history_frames: 24
     history_oldest_first: true
     input_name: obs_history
     output_name: event_logits
     activation: sigmoid
-    # event_logits label order:
-    # [left_contact, right_contact, left_touchdown, right_touchdown,
-    #  left_toe_riser_hit, right_toe_riser_hit]
-    left_touchdown_index: 2
-    right_touchdown_index: 3
-    left_toe_riser_index: 4
-    right_toe_riser_index: 5
-    touchdown_threshold: 0.9405555725
-    toe_riser_threshold: 0.9900000095
-    left_touchdown_threshold: 0.9405555725
-    right_touchdown_threshold: 0.9405555725
-    left_toe_riser_threshold: 0.9900000095
-    right_toe_riser_threshold: 0.9900000095
+    touchdown_threshold: 0.5
+    toe_riser_threshold: 0.5
     reset_ratio: 0.75
     touchdown_confirm_frames: 1
     toe_riser_confirm_frames: 1
     touchdown_cooldown_frames: 6
     toe_riser_cooldown_frames: 6
     startup_ignore_s: 0.50
+    footprint_touchdown_detector:
+      name: footprint_touchdown_detector
+      model_path: robots/g1/config/policy/velocity/slow_latent/exported/footprint_touchdown_detector.onnx
+      output_name: event_logits
+      left_contact_index: 0
+      right_contact_index: 1
+      left_touchdown_index: 2
+      right_touchdown_index: 3
+      left_touchdown_threshold: 0.9661537409
+      right_touchdown_threshold: 0.9774025083
+    toe_riser_detector:
+      name: toe_riser_detector
+      model_path: robots/g1/config/policy/velocity/slow_latent/exported/toe_riser_detector.onnx
+      output_name: event_logits
+      left_toe_riser_index: 4
+      right_toe_riser_index: 5
+      left_toe_riser_threshold: 0.9886512756
+      right_toe_riser_threshold: 0.9886512756
     frame_log:
       enabled: false
       path: foot_event_observer_frames.csv
       flush_interval_steps: 50
+  foot_event_memory:
+    enabled: true
+    memory_len: 6
+    age_norm_s: 1.5
+    stance_age_norm_s: 1.5
+    release_contact_prob_threshold: 0.20
+    release_confirm_frames: 2
+    early_contact_time_s: 0.08
+    odom_contact_lock_threshold: 0.55
+    odom_contact_release_threshold: 0.20
+    odom_max_step_translation_m: 0.20
+    odom_max_double_support_residual_m: 0.06
+    ratchet_height_threshold_m: 0.025
+    ratchet_flat_height_threshold_m: 0.02
+    ratchet_probe_increment_m: 0.05
+    ratchet_probe_bootstrap_increment_m: 0.10
+    ratchet_probe_provisional_min_target_m: 0.50
+    ratchet_probe_cap_m: 0.76
+    ratchet_probe_target_tolerance_m: 0.025
+    ratchet_post_first_collision_probe_increment_m: 0.05
+    ratchet_sequence_min_confidence: 0.30
+    ratchet_sequence_height_tolerance_m: 0.06
+    ratchet_sequence_max_adjacent_height_m: 0.24
+    ratchet_no_hit_lower_margin_m: 0.0
+    ratchet_interval_target_margin_m: 0.01
+    ratchet_collision_margin_m: 0.02
+    ratchet_toe_anchor_offset_m: 0.085
+    ratchet_recovery_completion_tolerance_m: 0.025
+    ratchet_recovery_completion_lower_tolerance_m: 0.025
+    ratchet_recovery_min_reduction_m: 0.025
+    ratchet_recovery_offset_m: 0.04
+    ratchet_lock_probe_lower_margin_m: 0.01
+    ratchet_lock_margin_m: 0.005
+    ratchet_lock_intent_tolerance_m: 0.03
+    ratchet_lock_stable_steps: 2
+    ratchet_lock_target_stable_enabled: false
+    ratchet_lock_phase_correction_enabled: false
+    ratchet_lock_phase_correction_gain: 0.60
+    ratchet_lock_phase_deadband_m: 0.005
+    ratchet_lock_phase_initial_front_error_m: 0.0
+    ratchet_lock_phase_max_backoff_m: 0.030
+    ratchet_lock_phase_max_forward_m: 0.015
+    ratchet_lock_phase_max_error_m: 0.080
+    ratchet_soft_upper_ttl_steps: 5
+    ratchet_first_collision_enters_stair_mode: true
+    ratchet_single_collision_confirms_interval: false
+    ratchet_two_collision_enabled: true
+    ratchet_two_collision_interval_margin_m: 0.025
+    ratchet_two_collision_stride_layers: 2.0
+    ratchet_two_collision_min_layer_delta: 1
+    ratchet_two_collision_min_height_delta_m: 0.055
+    ratchet_two_collision_nominal_riser_height_m: 0.15
+    ratchet_two_collision_height_layer_tolerance_m: 0.06
+    ratchet_two_collision_use_height_layers: true
+    ratchet_two_collision_lower_cross_margin_m: 0.10
+    ratchet_two_collision_upper_cross_margin_m: 0.08
+    ratchet_rejected_second_hit_confirm_count: 2
+    ratchet_rejected_second_hit_target_tolerance_m: 0.05
+    ratchet_second_collision_requires_up_step: true
+    ratchet_two_collision_tread_min_m: 0.23
+    ratchet_two_collision_tread_max_m: 0.37
+    ratchet_anchor_collision_enabled: true
+    ratchet_lower_target_lag_margin_m: 0.0
+    ratchet_same_foot_stride_guard_layers: 2.0
+    ratchet_same_foot_stride_guard_margin_m: 0.04
+    ratchet_collision_min_confidence: 0.45
+    ratchet_post_first_collision_collision_min_confidence: 0.30
+    ratchet_min_interval_width_m: 0.04
+    ratchet_min_stride_m: 0.10
+    ratchet_max_stride_m: 0.85
+    ratchet_reset_flat_pairs: 4
 
 # ── PD gains for deployment runtime ─────────────────────────────────────
 # Same as blindwalking/lstm5; derived from G1 constants.
@@ -118,7 +196,7 @@ commands:
     # Training uses [0, 1] forward speed and exact zero for standing samples.
     deadzone: 0.05
     ranges:
-      lin_vel_x: [0.0, 0.6]
+      lin_vel_x: [0.0, 1.0]
       lin_vel_y: [0.0, 0.0]
       ang_vel_z: [-0.8, 0.8]
       heading: null
@@ -209,7 +287,16 @@ observations:
 
   latent_obs:
     stair_latent:
-      params: {}
+      params:
+        include_gait_phase: true
+        gait_period: 0.6
       clip: null
-      scale: null   # 91-dim, no scaling (features are already normalized)
-      history_length: 1  # 1 = single frame (no stacking), maps to ONNX [1, 91]
+      scale: null   # 93-dim, no scaling (features are already normalized)
+      history_length: 1
+
+    foot_event_memory:
+      params:
+        summary_dim: 80
+      clip: null
+      scale: null
+      history_length: 1

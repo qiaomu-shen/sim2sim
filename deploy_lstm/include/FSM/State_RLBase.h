@@ -4,6 +4,7 @@
 #pragma once
 
 #include "FSMState.h"
+#include "foot_event_memory.h"
 #include "foot_event_observer.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 #include "isaaclab/envs/mdp/observations/observations.h"
@@ -19,6 +20,7 @@
 #include <fstream>
 #include <iomanip>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -67,7 +69,7 @@ public:
 
             while (policy_thread_running)
             {
-                env->step();
+                env->step([this] { update_foot_event_memory_before_policy(); });
                 write_touchdown_log_row();
 
                 if (diagnostics_interval_steps > 0 &&
@@ -193,6 +195,39 @@ private:
         } catch (const std::exception&) {
         }
         return values;
+    }
+
+    static float cfg_float(
+        const YAML::Node& cfg,
+        const char* key,
+        const float fallback)
+    {
+        if (!cfg || !cfg[key]) {
+            return fallback;
+        }
+        return cfg[key].as<float>(fallback);
+    }
+
+    static int cfg_int(
+        const YAML::Node& cfg,
+        const char* key,
+        const int fallback)
+    {
+        if (!cfg || !cfg[key]) {
+            return fallback;
+        }
+        return cfg[key].as<int>(fallback);
+    }
+
+    static bool cfg_bool(
+        const YAML::Node& cfg,
+        const char* key,
+        const bool fallback)
+    {
+        if (!cfg || !cfg[key]) {
+            return fallback;
+        }
+        return cfg[key].as<bool>(fallback);
     }
 
     void set_active_joint_gains()
@@ -656,8 +691,11 @@ private:
         const auto diagnostics_cfg = env->cfg["diagnostics"];
         const auto observer_cfg =
             diagnostics_cfg ? diagnostics_cfg["foot_event_observer"] : YAML::Node{};
+        const auto memory_cfg =
+            diagnostics_cfg ? diagnostics_cfg["foot_event_memory"] : YAML::Node{};
 
         mjlab::diagnostics::FootEventObserverConfig cfg;
+        configure_foot_event_memory(memory_cfg);
         if (!observer_cfg) {
             foot_event_observer_.configure(cfg);
             return;
@@ -666,11 +704,6 @@ private:
         const auto frame_cfg =
             observer_cfg["frame_log"] ? observer_cfg["frame_log"] : YAML::Node{};
 
-        cfg.enabled = observer_cfg["enabled"].as<bool>(false);
-        cfg.model_path = model_path_from_cfg(
-            observer_cfg,
-            "eval_outputs/stair_stage2/"
-            "model51000_seed42_foot_event_detector_online_v7/best.onnx");
         cfg.event_path = diagnostics_path_from_cfg(
             observer_cfg,
             "log/foot_event_observer_events.csv");
@@ -695,29 +728,83 @@ private:
             std::max(0, observer_cfg["history_frames"].as<int>(0));
         cfg.history_oldest_first =
             observer_cfg["history_oldest_first"].as<bool>(true);
-        cfg.input_name = observer_cfg["input_name"].as<std::string>("obs_history");
-        cfg.output_name = observer_cfg["output_name"].as<std::string>("event_logits");
-        cfg.activation = observer_cfg["activation"].as<std::string>("sigmoid");
+        cfg.enabled = observer_cfg["enabled"].as<bool>(false);
+
+        const std::string common_input_name =
+            observer_cfg["input_name"].as<std::string>("obs_history");
+        const std::string common_output_name =
+            observer_cfg["output_name"].as<std::string>("event_logits");
+        const std::string common_activation =
+            observer_cfg["activation"].as<std::string>("sigmoid");
+        const auto footprint_cfg =
+            observer_cfg["footprint_touchdown_detector"]
+                ? observer_cfg["footprint_touchdown_detector"]
+                : YAML::Node{};
+        const auto toe_cfg =
+            observer_cfg["toe_riser_detector"]
+                ? observer_cfg["toe_riser_detector"]
+                : YAML::Node{};
+
+        cfg.footprint_touchdown_detector.name =
+            footprint_cfg["name"].as<std::string>("footprint_touchdown_detector");
+        cfg.footprint_touchdown_detector.model_path = model_path_from_cfg(
+            footprint_cfg,
+            "robots/g1/config/policy/velocity/slow_latent/exported/"
+            "footprint_touchdown_detector.onnx");
+        cfg.footprint_touchdown_detector.input_name =
+            footprint_cfg["input_name"].as<std::string>(common_input_name);
+        cfg.footprint_touchdown_detector.output_name =
+            footprint_cfg["output_name"].as<std::string>(common_output_name);
+        cfg.footprint_touchdown_detector.activation =
+            footprint_cfg["activation"].as<std::string>(common_activation);
+
+        cfg.toe_riser_detector.name =
+            toe_cfg["name"].as<std::string>("toe_riser_detector");
+        cfg.toe_riser_detector.model_path = model_path_from_cfg(
+            toe_cfg,
+            "robots/g1/config/policy/velocity/slow_latent/exported/"
+            "toe_riser_detector.onnx");
+        cfg.toe_riser_detector.input_name =
+            toe_cfg["input_name"].as<std::string>(common_input_name);
+        cfg.toe_riser_detector.output_name =
+            toe_cfg["output_name"].as<std::string>(common_output_name);
+        cfg.toe_riser_detector.activation =
+            toe_cfg["activation"].as<std::string>(common_activation);
+
         cfg.left_touchdown_index =
-            observer_cfg["left_touchdown_index"].as<int>(2);
+            footprint_cfg["left_touchdown_index"].as<int>(
+                observer_cfg["left_touchdown_index"].as<int>(2));
         cfg.right_touchdown_index =
-            observer_cfg["right_touchdown_index"].as<int>(3);
+            footprint_cfg["right_touchdown_index"].as<int>(
+                observer_cfg["right_touchdown_index"].as<int>(3));
+        cfg.left_contact_index =
+            footprint_cfg["left_contact_index"].as<int>(
+                observer_cfg["left_contact_index"].as<int>(0));
+        cfg.right_contact_index =
+            footprint_cfg["right_contact_index"].as<int>(
+                observer_cfg["right_contact_index"].as<int>(1));
         cfg.left_toe_riser_index =
-            observer_cfg["left_toe_riser_index"].as<int>(4);
+            toe_cfg["left_toe_riser_index"].as<int>(
+                observer_cfg["left_toe_riser_index"].as<int>(4));
         cfg.right_toe_riser_index =
-            observer_cfg["right_toe_riser_index"].as<int>(5);
+            toe_cfg["right_toe_riser_index"].as<int>(
+                observer_cfg["right_toe_riser_index"].as<int>(5));
         cfg.touchdown_threshold =
             observer_cfg["touchdown_threshold"].as<float>(0.5f);
         cfg.toe_riser_threshold =
             observer_cfg["toe_riser_threshold"].as<float>(0.5f);
         cfg.left_touchdown_threshold =
-            observer_cfg["left_touchdown_threshold"].as<float>(-1.0f);
+            footprint_cfg["left_touchdown_threshold"].as<float>(
+                observer_cfg["left_touchdown_threshold"].as<float>(-1.0f));
         cfg.right_touchdown_threshold =
-            observer_cfg["right_touchdown_threshold"].as<float>(-1.0f);
+            footprint_cfg["right_touchdown_threshold"].as<float>(
+                observer_cfg["right_touchdown_threshold"].as<float>(-1.0f));
         cfg.left_toe_riser_threshold =
-            observer_cfg["left_toe_riser_threshold"].as<float>(-1.0f);
+            toe_cfg["left_toe_riser_threshold"].as<float>(
+                observer_cfg["left_toe_riser_threshold"].as<float>(-1.0f));
         cfg.right_toe_riser_threshold =
-            observer_cfg["right_toe_riser_threshold"].as<float>(-1.0f);
+            toe_cfg["right_toe_riser_threshold"].as<float>(
+                observer_cfg["right_toe_riser_threshold"].as<float>(-1.0f));
         cfg.reset_ratio = observer_cfg["reset_ratio"].as<float>(0.75f);
         cfg.touchdown_confirm_frames =
             std::max(1, observer_cfg["touchdown_confirm_frames"].as<int>(1));
@@ -736,15 +823,278 @@ private:
         }
         if (foot_event_observer_.open()) {
             spdlog::info(
-                "Foot event ONNX observer enabled: model={} events={}",
-                cfg.model_path.string(),
+                "Foot event ONNX observer enabled: footprint_model={} toe_model={} events={}",
+                cfg.footprint_touchdown_detector.model_path.string(),
+                cfg.toe_riser_detector.model_path.string(),
                 cfg.event_path.string());
         } else {
             spdlog::error(
-                "Failed to open foot event ONNX observer: model={} events={}",
-                cfg.model_path.string(),
+                "Failed to open foot event ONNX observer: footprint_model={} toe_model={} events={}",
+                cfg.footprint_touchdown_detector.model_path.string(),
+                cfg.toe_riser_detector.model_path.string(),
                 cfg.event_path.string());
+            throw std::runtime_error(
+                "Required foot event ONNX observer failed to start.");
         }
+    }
+
+    void configure_foot_event_memory(const YAML::Node& memory_cfg)
+    {
+        mjlab::diagnostics::FootEventMemoryConfig cfg;
+        foot_event_memory_enabled_ = cfg_bool(memory_cfg, "enabled", true);
+        cfg.memory_len = cfg_int(memory_cfg, "memory_len", cfg.memory_len);
+        cfg.age_norm_s = cfg_float(memory_cfg, "age_norm_s", cfg.age_norm_s);
+        cfg.stance_age_norm_s =
+            cfg_float(memory_cfg, "stance_age_norm_s", cfg.stance_age_norm_s);
+        cfg.release_contact_prob_threshold = cfg_float(
+            memory_cfg,
+            "release_contact_prob_threshold",
+            cfg.release_contact_prob_threshold);
+        cfg.release_confirm_frames = cfg_int(
+            memory_cfg,
+            "release_confirm_frames",
+            cfg.release_confirm_frames);
+        cfg.early_contact_time_s =
+            cfg_float(memory_cfg, "early_contact_time_s", cfg.early_contact_time_s);
+
+        cfg.ratchet_height_threshold_m = cfg_float(
+            memory_cfg, "ratchet_height_threshold_m", cfg.ratchet_height_threshold_m);
+        cfg.ratchet_flat_height_threshold_m = cfg_float(
+            memory_cfg,
+            "ratchet_flat_height_threshold_m",
+            cfg.ratchet_flat_height_threshold_m);
+        cfg.ratchet_probe_increment_m = cfg_float(
+            memory_cfg, "ratchet_probe_increment_m", cfg.ratchet_probe_increment_m);
+        cfg.ratchet_probe_bootstrap_increment_m = cfg_float(
+            memory_cfg,
+            "ratchet_probe_bootstrap_increment_m",
+            cfg.ratchet_probe_bootstrap_increment_m);
+        cfg.ratchet_probe_provisional_min_target_m = cfg_float(
+            memory_cfg,
+            "ratchet_probe_provisional_min_target_m",
+            cfg.ratchet_probe_provisional_min_target_m);
+        cfg.ratchet_probe_cap_m =
+            cfg_float(memory_cfg, "ratchet_probe_cap_m", cfg.ratchet_probe_cap_m);
+        cfg.ratchet_probe_target_tolerance_m = cfg_float(
+            memory_cfg,
+            "ratchet_probe_target_tolerance_m",
+            cfg.ratchet_probe_target_tolerance_m);
+        cfg.ratchet_sequence_min_confidence = cfg_float(
+            memory_cfg,
+            "ratchet_sequence_min_confidence",
+            cfg.ratchet_sequence_min_confidence);
+        cfg.ratchet_sequence_height_tolerance_m = cfg_float(
+            memory_cfg,
+            "ratchet_sequence_height_tolerance_m",
+            cfg.ratchet_sequence_height_tolerance_m);
+        cfg.ratchet_sequence_max_adjacent_height_m = cfg_float(
+            memory_cfg,
+            "ratchet_sequence_max_adjacent_height_m",
+            cfg.ratchet_sequence_max_adjacent_height_m);
+        cfg.ratchet_post_first_collision_probe_increment_m = cfg_float(
+            memory_cfg,
+            "ratchet_post_first_collision_probe_increment_m",
+            cfg.ratchet_post_first_collision_probe_increment_m);
+        cfg.ratchet_no_hit_lower_margin_m = cfg_float(
+            memory_cfg,
+            "ratchet_no_hit_lower_margin_m",
+            cfg.ratchet_no_hit_lower_margin_m);
+        cfg.ratchet_interval_target_margin_m = cfg_float(
+            memory_cfg,
+            "ratchet_interval_target_margin_m",
+            cfg.ratchet_interval_target_margin_m);
+        cfg.ratchet_collision_margin_m = cfg_float(
+            memory_cfg, "ratchet_collision_margin_m", cfg.ratchet_collision_margin_m);
+        cfg.ratchet_toe_anchor_offset_m = cfg_float(
+            memory_cfg,
+            "ratchet_toe_anchor_offset_m",
+            cfg.ratchet_toe_anchor_offset_m);
+        cfg.ratchet_recovery_completion_tolerance_m = cfg_float(
+            memory_cfg,
+            "ratchet_recovery_completion_tolerance_m",
+            cfg.ratchet_recovery_completion_tolerance_m);
+        cfg.ratchet_recovery_completion_lower_tolerance_m = cfg_float(
+            memory_cfg,
+            "ratchet_recovery_completion_lower_tolerance_m",
+            cfg.ratchet_recovery_completion_lower_tolerance_m);
+        cfg.ratchet_recovery_min_reduction_m = cfg_float(
+            memory_cfg,
+            "ratchet_recovery_min_reduction_m",
+            cfg.ratchet_recovery_min_reduction_m);
+        cfg.ratchet_recovery_offset_m = cfg_float(
+            memory_cfg, "ratchet_recovery_offset_m", cfg.ratchet_recovery_offset_m);
+        cfg.ratchet_lock_probe_lower_margin_m = cfg_float(
+            memory_cfg,
+            "ratchet_lock_probe_lower_margin_m",
+            cfg.ratchet_lock_probe_lower_margin_m);
+        cfg.ratchet_lock_margin_m =
+            cfg_float(memory_cfg, "ratchet_lock_margin_m", cfg.ratchet_lock_margin_m);
+        cfg.ratchet_lock_intent_tolerance_m = cfg_float(
+            memory_cfg,
+            "ratchet_lock_intent_tolerance_m",
+            cfg.ratchet_lock_intent_tolerance_m);
+        cfg.ratchet_lock_stable_steps = cfg_int(
+            memory_cfg, "ratchet_lock_stable_steps", cfg.ratchet_lock_stable_steps);
+        cfg.ratchet_lock_target_stable_enabled = cfg_bool(
+            memory_cfg,
+            "ratchet_lock_target_stable_enabled",
+            cfg.ratchet_lock_target_stable_enabled);
+        cfg.ratchet_lock_phase_correction_enabled = cfg_bool(
+            memory_cfg,
+            "ratchet_lock_phase_correction_enabled",
+            cfg.ratchet_lock_phase_correction_enabled);
+        cfg.ratchet_lock_phase_correction_gain = cfg_float(
+            memory_cfg,
+            "ratchet_lock_phase_correction_gain",
+            cfg.ratchet_lock_phase_correction_gain);
+        cfg.ratchet_lock_phase_deadband_m = cfg_float(
+            memory_cfg,
+            "ratchet_lock_phase_deadband_m",
+            cfg.ratchet_lock_phase_deadband_m);
+        cfg.ratchet_lock_phase_initial_front_error_m = cfg_float(
+            memory_cfg,
+            "ratchet_lock_phase_initial_front_error_m",
+            cfg.ratchet_lock_phase_initial_front_error_m);
+        cfg.ratchet_lock_phase_max_backoff_m = cfg_float(
+            memory_cfg,
+            "ratchet_lock_phase_max_backoff_m",
+            cfg.ratchet_lock_phase_max_backoff_m);
+        cfg.ratchet_lock_phase_max_forward_m = cfg_float(
+            memory_cfg,
+            "ratchet_lock_phase_max_forward_m",
+            cfg.ratchet_lock_phase_max_forward_m);
+        cfg.ratchet_lock_phase_max_error_m = cfg_float(
+            memory_cfg,
+            "ratchet_lock_phase_max_error_m",
+            cfg.ratchet_lock_phase_max_error_m);
+        cfg.ratchet_soft_upper_ttl_steps = cfg_int(
+            memory_cfg,
+            "ratchet_soft_upper_ttl_steps",
+            cfg.ratchet_soft_upper_ttl_steps);
+        cfg.ratchet_first_collision_enters_stair_mode = cfg_bool(
+            memory_cfg,
+            "ratchet_first_collision_enters_stair_mode",
+            cfg.ratchet_first_collision_enters_stair_mode);
+        cfg.ratchet_single_collision_confirms_interval = cfg_bool(
+            memory_cfg,
+            "ratchet_single_collision_confirms_interval",
+            cfg.ratchet_single_collision_confirms_interval);
+        cfg.ratchet_two_collision_enabled = cfg_bool(
+            memory_cfg,
+            "ratchet_two_collision_enabled",
+            cfg.ratchet_two_collision_enabled);
+        cfg.ratchet_two_collision_interval_margin_m = cfg_float(
+            memory_cfg,
+            "ratchet_two_collision_interval_margin_m",
+            cfg.ratchet_two_collision_interval_margin_m);
+        cfg.ratchet_two_collision_stride_layers = cfg_float(
+            memory_cfg,
+            "ratchet_two_collision_stride_layers",
+            cfg.ratchet_two_collision_stride_layers);
+        cfg.ratchet_two_collision_min_layer_delta = cfg_int(
+            memory_cfg,
+            "ratchet_two_collision_min_layer_delta",
+            cfg.ratchet_two_collision_min_layer_delta);
+        cfg.ratchet_two_collision_min_height_delta_m = cfg_float(
+            memory_cfg,
+            "ratchet_two_collision_min_height_delta_m",
+            cfg.ratchet_two_collision_min_height_delta_m);
+        cfg.ratchet_two_collision_nominal_riser_height_m = cfg_float(
+            memory_cfg,
+            "ratchet_two_collision_nominal_riser_height_m",
+            cfg.ratchet_two_collision_nominal_riser_height_m);
+        cfg.ratchet_two_collision_height_layer_tolerance_m = cfg_float(
+            memory_cfg,
+            "ratchet_two_collision_height_layer_tolerance_m",
+            cfg.ratchet_two_collision_height_layer_tolerance_m);
+        cfg.ratchet_two_collision_use_height_layers = cfg_bool(
+            memory_cfg,
+            "ratchet_two_collision_use_height_layers",
+            cfg.ratchet_two_collision_use_height_layers);
+        cfg.ratchet_two_collision_lower_cross_margin_m = cfg_float(
+            memory_cfg,
+            "ratchet_two_collision_lower_cross_margin_m",
+            cfg.ratchet_two_collision_lower_cross_margin_m);
+        cfg.ratchet_two_collision_upper_cross_margin_m = cfg_float(
+            memory_cfg,
+            "ratchet_two_collision_upper_cross_margin_m",
+            cfg.ratchet_two_collision_upper_cross_margin_m);
+        cfg.ratchet_rejected_second_hit_confirm_count = cfg_int(
+            memory_cfg,
+            "ratchet_rejected_second_hit_confirm_count",
+            cfg.ratchet_rejected_second_hit_confirm_count);
+        cfg.ratchet_rejected_second_hit_target_tolerance_m = cfg_float(
+            memory_cfg,
+            "ratchet_rejected_second_hit_target_tolerance_m",
+            cfg.ratchet_rejected_second_hit_target_tolerance_m);
+        cfg.ratchet_second_collision_requires_up_step = cfg_bool(
+            memory_cfg,
+            "ratchet_second_collision_requires_up_step",
+            cfg.ratchet_second_collision_requires_up_step);
+        cfg.ratchet_two_collision_tread_min_m = cfg_float(
+            memory_cfg,
+            "ratchet_two_collision_tread_min_m",
+            cfg.ratchet_two_collision_tread_min_m);
+        cfg.ratchet_two_collision_tread_max_m = cfg_float(
+            memory_cfg,
+            "ratchet_two_collision_tread_max_m",
+            cfg.ratchet_two_collision_tread_max_m);
+        cfg.ratchet_anchor_collision_enabled = cfg_bool(
+            memory_cfg,
+            "ratchet_anchor_collision_enabled",
+            cfg.ratchet_anchor_collision_enabled);
+        cfg.ratchet_lower_target_lag_margin_m = cfg_float(
+            memory_cfg,
+            "ratchet_lower_target_lag_margin_m",
+            cfg.ratchet_lower_target_lag_margin_m);
+        cfg.ratchet_same_foot_stride_guard_layers = cfg_float(
+            memory_cfg,
+            "ratchet_same_foot_stride_guard_layers",
+            cfg.ratchet_same_foot_stride_guard_layers);
+        cfg.ratchet_same_foot_stride_guard_margin_m = cfg_float(
+            memory_cfg,
+            "ratchet_same_foot_stride_guard_margin_m",
+            cfg.ratchet_same_foot_stride_guard_margin_m);
+        cfg.ratchet_collision_min_confidence = cfg_float(
+            memory_cfg,
+            "ratchet_collision_min_confidence",
+            cfg.ratchet_collision_min_confidence);
+        cfg.ratchet_post_first_collision_collision_min_confidence = cfg_float(
+            memory_cfg,
+            "ratchet_post_first_collision_collision_min_confidence",
+            cfg.ratchet_post_first_collision_collision_min_confidence);
+        cfg.ratchet_min_interval_width_m = cfg_float(
+            memory_cfg,
+            "ratchet_min_interval_width_m",
+            cfg.ratchet_min_interval_width_m);
+        cfg.ratchet_min_stride_m =
+            cfg_float(memory_cfg, "ratchet_min_stride_m", cfg.ratchet_min_stride_m);
+        cfg.ratchet_max_stride_m =
+            cfg_float(memory_cfg, "ratchet_max_stride_m", cfg.ratchet_max_stride_m);
+        cfg.ratchet_reset_flat_pairs = cfg_int(
+            memory_cfg, "ratchet_reset_flat_pairs", cfg.ratchet_reset_flat_pairs);
+
+        cfg.odom_contact_lock_threshold = cfg_float(
+            memory_cfg,
+            "odom_contact_lock_threshold",
+            cfg.odom_contact_lock_threshold);
+        cfg.odom_contact_release_threshold = cfg_float(
+            memory_cfg,
+            "odom_contact_release_threshold",
+            cfg.odom_contact_release_threshold);
+        cfg.odom_max_step_translation_m = cfg_float(
+            memory_cfg,
+            "odom_max_step_translation_m",
+            cfg.odom_max_step_translation_m);
+        cfg.odom_max_double_support_residual_m = cfg_float(
+            memory_cfg,
+            "odom_max_double_support_residual_m",
+            cfg.odom_max_double_support_residual_m);
+
+        foot_event_memory_.configure(cfg);
+        env->robot->data.foot_event_summary.assign(
+            mjlab::diagnostics::FootEventMemory::kSummaryDim,
+            0.0f);
     }
 
     void close_touchdown_log()
@@ -829,12 +1179,124 @@ private:
         return lowstate->msg_.tick();
     }
 
+    mjlab::diagnostics::FootEventObserverFrame make_foot_event_observer_frame(
+        const std::string& state_string,
+        const uint32_t lowstate_tick_ms,
+        const float phase,
+        const std::vector<float>& command,
+        const std::vector<float>& prev_action,
+        const std::vector<float>& scale) const
+    {
+        const auto& data = env->robot->data;
+        mjlab::diagnostics::FootEventObserverFrame frame;
+        frame.state = state_string;
+        frame.step = env->episode_length;
+        frame.tick_ms = lowstate_tick_ms;
+        frame.time_s =
+            static_cast<double>(env->episode_length) * env->step_dt;
+        frame.phase = phase;
+        frame.command = {command[0], command[1], command[2]};
+        frame.joystick = {
+            data.joystick->ly(),
+            data.joystick->lx(),
+            data.joystick->rx(),
+        };
+        frame.root_quat_w = data.root_quat_w;
+        frame.projected_gravity_b = data.projected_gravity_b;
+        frame.root_ang_vel_b = data.root_ang_vel_b;
+        frame.left_toe_pos_b = data.left_toe_pos_body;
+        frame.right_toe_pos_b = data.right_toe_pos_body;
+        frame.left_heel_pos_b = data.left_heel_pos_body;
+        frame.right_heel_pos_b = data.right_heel_pos_body;
+        frame.prev_action = prev_action;
+        frame.action_scale = scale;
+        frame.joint_pos = data.joint_pos;
+        frame.default_joint_pos = data.default_joint_pos;
+        frame.joint_vel = data.joint_vel;
+        return frame;
+    }
+
+    void clear_foot_event_memory_summary()
+    {
+        foot_event_memory_.reset();
+        env->robot->data.foot_event_summary.assign(
+            mjlab::diagnostics::FootEventMemory::kSummaryDim,
+            0.0f);
+    }
+
+    void reset_foot_event_runtime()
+    {
+        foot_event_observer_.reset();
+        clear_foot_event_memory_summary();
+    }
+
+    void update_foot_event_memory_before_policy()
+    {
+        if (!foot_event_memory_enabled_) {
+            clear_foot_event_memory_summary();
+            return;
+        }
+        if (!foot_event_observer_.enabled()) {
+            clear_foot_event_memory_summary();
+            return;
+        }
+
+        const auto command = isaaclab::mdp::velocity_commands(env.get(), YAML::Node{});
+        const auto prev_action = env->action_manager->prev_action();
+        const auto scale = action_scale();
+        const float phase = current_gait_phase();
+        const auto observer_frame = make_foot_event_observer_frame(
+            getStateString(),
+            current_lowstate_tick_ms(),
+            phase,
+            command,
+            prev_action,
+            scale);
+        const auto observer_output = foot_event_observer_.update(observer_frame);
+        if (!foot_event_observer_.enabled()) {
+            clear_foot_event_memory_summary();
+            return;
+        }
+
+        mjlab::diagnostics::FootEventMemoryFrame memory_frame;
+        const auto& data = env->robot->data;
+        memory_frame.step = env->episode_length;
+        memory_frame.dt = env->step_dt;
+        memory_frame.phase = phase;
+        memory_frame.command = {command[0], command[1], command[2]};
+        memory_frame.root_quat_w = data.root_quat_w;
+        memory_frame.left_toe_pos_b = data.left_toe_pos_body;
+        memory_frame.right_toe_pos_b = data.right_toe_pos_body;
+        memory_frame.left_heel_pos_b = data.left_heel_pos_body;
+        memory_frame.right_heel_pos_b = data.right_heel_pos_body;
+        memory_frame.contact_prob = {
+            observer_output.left_contact_prob,
+            observer_output.right_contact_prob,
+        };
+        memory_frame.touchdown_prob = {
+            observer_output.left_touchdown_prob,
+            observer_output.right_touchdown_prob,
+        };
+        memory_frame.toe_riser_prob = {
+            observer_output.left_toe_riser_prob,
+            observer_output.right_toe_riser_prob,
+        };
+        memory_frame.touchdown_event = {
+            observer_output.left_touchdown_event,
+            observer_output.right_touchdown_event,
+        };
+        memory_frame.toe_riser_event = {
+            observer_output.left_toe_riser_event,
+            observer_output.right_toe_riser_event,
+        };
+        env->robot->data.foot_event_summary = foot_event_memory_.update(memory_frame);
+    }
+
     void write_touchdown_log_row()
     {
         const bool write_frame_log = touchdown_log_enabled_ && touchdown_log_.is_open();
         if (!write_frame_log &&
-            !touchdown_detector_.enabled() &&
-            !foot_event_observer_.enabled()) {
+            !touchdown_detector_.enabled()) {
             return;
         }
 
@@ -960,35 +1422,6 @@ private:
             detector_frame.right.tracking_delta = right_tracking_delta;
             detector_frame.right.tau_delta = right_tau_delta;
             touchdown_detector_.update(detector_frame);
-        }
-
-        if (foot_event_observer_.enabled()) {
-            mjlab::diagnostics::FootEventObserverFrame observer_frame;
-            observer_frame.state = state_string;
-            observer_frame.step = env->episode_length;
-            observer_frame.tick_ms = lowstate_tick_ms;
-            observer_frame.time_s =
-                static_cast<double>(env->episode_length) * env->step_dt;
-            observer_frame.phase = phase;
-            observer_frame.command = {command[0], command[1], command[2]};
-            observer_frame.joystick = {
-                data.joystick->ly(),
-                data.joystick->lx(),
-                data.joystick->rx(),
-            };
-            observer_frame.root_quat_w = data.root_quat_w;
-            observer_frame.projected_gravity_b = data.projected_gravity_b;
-            observer_frame.root_ang_vel_b = data.root_ang_vel_b;
-            observer_frame.left_toe_pos_b = data.left_toe_pos_body;
-            observer_frame.right_toe_pos_b = data.right_toe_pos_body;
-            observer_frame.left_heel_pos_b = data.left_heel_pos_body;
-            observer_frame.right_heel_pos_b = data.right_heel_pos_body;
-            observer_frame.prev_action = prev_action;
-            observer_frame.action_scale = scale;
-            observer_frame.joint_pos = data.joint_pos;
-            observer_frame.default_joint_pos = data.default_joint_pos;
-            observer_frame.joint_vel = data.joint_vel;
-            foot_event_observer_.update(observer_frame);
         }
 
         if (!write_frame_log) {
@@ -1120,6 +1553,8 @@ private:
     float prev_right_tau_mean_ = 0.0f;
     mjlab::diagnostics::TouchdownDetector touchdown_detector_;
     mjlab::diagnostics::FootEventObserver foot_event_observer_;
+    mjlab::diagnostics::FootEventMemory foot_event_memory_;
+    bool foot_event_memory_enabled_ = true;
 
     std::thread policy_thread;
     bool policy_thread_running = false;
