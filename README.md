@@ -22,6 +22,16 @@ This repository is a working space for **Unitree G1 / G1-29DOF simulation, sim2s
 - `tools/` — local helper and diagnostic tools. / 本地辅助与诊断工具。
 
 
+## Sim2Sim Demo / 演示
+
+![G1 lidar heightmap sim2sim stable walk](https://raw.githubusercontent.com/qiaomu-shen/sim2sim/test/lidar-blindzone-heightmap/docs/media/lidar_sim2sim_stable_walk.gif)
+
+**HD MP4 / 高清视频:** [lidar_sim2sim_stable_walk.mp4](https://github.com/qiaomu-shen/sim2sim/blob/test/lidar-blindzone-heightmap/docs/media/lidar_sim2sim_stable_walk.mp4)
+
+This demo shows the **G1-29DOF** robot using lidar-derived `height_scan` input to stably cross the stepping-stone sequence in the MuJoCo stair scene. The demo belongs to the `test/lidar-blindzone-heightmap` experiment branch.
+
+该演示展示 **G1-29DOF** 在 MuJoCo 台阶场景中使用 lidar 生成的 `height_scan` 输入稳定跨越石块序列。演示对应 `test/lidar-blindzone-heightmap` 实验分支。
+
 ## Current Branch: `test/lidar-blindzone-heightmap`
 
 This branch focuses on **G1-29DOF sim2sim deployment with lidar heightmap input** and on reducing the gap between the training/simulation interface and the deployable robot runtime.
@@ -39,15 +49,6 @@ This branch focuses on **G1-29DOF sim2sim deployment with lidar heightmap input*
 - Add MuJoCo- and deployment-side diagnostics for flat-ground, stair, and fall cases.  
   为平地、楼梯和跌倒等情况增加 MuJoCo 与部署侧诊断。
 
-## Sim2Sim Demo / 演示
-
-![G1 lidar heightmap sim2sim stable walk](docs/media/lidar_sim2sim_stable_walk.gif)
-
-HD video / 高清视频：`docs/media/lidar_sim2sim_stable_walk.mp4`
-
-The demo shows the G1-29DOF robot using lidar-derived `height_scan` input to stably cross the stepping-stone sequence in the MuJoCo stair scene.
-
-该演示展示 G1-29DOF 在 MuJoCo 台阶场景中使用 lidar 生成的 `height_scan` 输入稳定跨越石块序列。
 
 ## Current Policy / 当前策略
 
