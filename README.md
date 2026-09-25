@@ -1,172 +1,125 @@
-# Sim2Sim Unitree G1 工作区 / Workspace
+# Unitree G1 Sim2Sim & Deployment Workspace / Unitree G1 仿真迁移与部署工作区
 
-语言 / Language: [中文](#中文) | [English](#english)
+This repository is a working space for **Unitree G1 / G1-29DOF simulation, sim2sim policy transfer, perception bridging, and deployment debugging**. It collects the runtime, MuJoCo simulation, deployment code, and experiment-specific branches used to move locomotion policies from training/simulation toward deployable G1 systems.
 
-<a id="中文"></a>
-## 中文
+本仓库用于 **Unitree G1 / G1-29DOF 的仿真、sim2sim 策略迁移、感知桥接与部署调试**，集中保存 MuJoCo 仿真、控制器、部署代码以及不同实验分支，目标是将训练得到的运动策略逐步迁移到可部署的 G1 系统中。
 
-这是 `test/lidar-blindzone-heightmap` 分支，用于 Unitree G1 29DOF
-sim2sim 部署、激光雷达高度图桥接和实机/仿真一致性调试。
+> **Main focus / 主要方向:** simulation → sim2sim → deployment → real/simulation consistency
 
-### 分支目标
+## Branches / 分支
 
-本分支围绕 `unitree_rl_lab/deploy/robots/g1_29dof` 的 G1-29DOF 控制器展开，重点是：
+| Branch | Purpose / 用途 |
+| --- | --- |
+| **`main`** | Base workspace, shared dependencies, repository index, and common deployment infrastructure. / 基础工作区、公共依赖、仓库索引与通用部署基础设施。 |
+| **`test/lidar-blindzone-heightmap`** | G1-29DOF lidar blindwalking / heightmap deployment branch, including 21DOF-policy migration, Livox heightmap bridging, MuJoCo demos, and deployment diagnostics. / G1-29DOF 激光雷达盲走与高度图部署分支，包括 21DOF 策略迁移、Livox 高度图桥接、MuJoCo 演示和部署诊断。 |
 
-- 将原 21DOF active policy 迁移到 29DOF 机体，并锁住新增的 8 个自由度。
-- 保持 policy 的 21 个 action/observation 槽位顺序，不按 29DOF SDK natural order 重新编号。
-- 接入 Livox 点云到 11x11 `height_scan` 的高度图桥接。
-- 为平地、楼梯和跌倒 case 增加 MuJoCo/部署侧诊断输出。
+## Repository Layout / 代码结构
 
-### Sim2Sim 演示视频
+- `unitree_rl_lab/` — training/deployment code and G1-29DOF policy runtime. / 训练与部署代码，包括 G1-29DOF 策略运行。
+- `unitree_mujoco/` — Unitree MuJoCo simulation, robot XMLs, scenes, and sim2sim support. / Unitree MuJoCo 仿真、机器人 XML、场景与 sim2sim 支持。
+- `deploy_lstm/` — earlier locomotion, recurrent-policy, and perception deployment experiments. / 早期运动控制、循环策略与感知部署实验。
+- `unitree_sdk2/` — Unitree SDK2 dependency and examples. / Unitree SDK2 依赖与示例。
+- `tools/` — local helper and diagnostic tools. / 本地辅助与诊断工具。
 
-![G1 lidar heightmap sim2sim stable walk](docs/media/lidar_sim2sim_stable_walk.gif)
 
-高清 MP4：`docs/media/lidar_sim2sim_stable_walk.mp4`
+## Current Branch: `test/lidar-blindzone-heightmap`
 
-这段是本分支的激光雷达 `height_scan` sim2sim 演示：G1-29DOF 在 MuJoCo
-台阶场景中使用 lidar heightmap 输入稳定跨越石块序列。
+This branch focuses on **G1-29DOF sim2sim deployment with lidar heightmap input** and on reducing the gap between the training/simulation interface and the deployable robot runtime.
 
-### 主要目录
+本分支重点研究 **G1-29DOF 的激光雷达高度图 sim2sim 部署**，并处理训练/仿真接口与机器人实际运行接口之间的一致性问题。
 
-- `unitree_rl_lab/deploy/robots/g1_29dof/`：G1-29DOF 控制器、策略配置、heightmap bridge 和诊断代码。
-- `unitree_mujoco/`：Unitree MuJoCo 仿真环境、机器人 XML、场景和 DDS bridge。
-- `deploy_lstm/`：早期 LSTM/感知部署实验和辅助分析脚本。
-- `unitree_sdk2/`：Unitree SDK2 依赖与示例。
+### Main Goals / 主要目标
 
-### 当前策略
+- Migrate the original **21DOF active policy** to the **29DOF G1 body** while locking the 8 additional joints.  
+  将原 **21DOF active policy** 迁移到 **29DOF G1 机体**，并锁定新增的 8 个自由度。
+- Preserve the original 21 policy action/observation slots instead of re-indexing them according to the 29DOF SDK natural order.  
+  保持原策略的 21 个 action / observation 槽位顺序，不按照 29DOF SDK natural order 重新编号。
+- Bridge **Livox point clouds** into an **11 × 11 `height_scan`** representation.  
+  将 **Livox 点云**转换为 **11 × 11 `height_scan`**。
+- Add MuJoCo- and deployment-side diagnostics for flat-ground, stair, and fall cases.  
+  为平地、楼梯和跌倒等情况增加 MuJoCo 与部署侧诊断。
 
-当前调试策略位于：
-
-```text
-unitree_rl_lab/deploy/robots/g1_29dof/config/policy/velocity/lidar_blindwalking_model2600
-```
-
-该策略的 ONNX 输入输出约定：
-
-- observation: `[1, 193]`
-- action: `[1, 21]`
-- `height_scan`: 121 维
-
-### 本分支运行顺序
-
-终端 1，启动 MuJoCo：
-
-```bash
-cd /home/ubt2204/work/111/TRY/sim2sim/unitree_mujoco/simulate
-./build/unitree_mujoco --network lo --domain_id 0
-```
-
-终端 2，启动高度图桥接：
-
-```bash
-cd /home/ubt2204/work/111/TRY/sim2sim/unitree_rl_lab/deploy/robots/g1_29dof
-./scripts/run_lidar_blindwalking_model2600_heightmap_bridge.sh
-```
-
-终端 3，启动控制器：
-
-```bash
-cd /home/ubt2204/work/111/TRY/sim2sim/unitree_rl_lab/deploy/robots/g1_29dof
-./build/g1_ctrl --network lo
-```
-
-### 注意
-
-这是机器人部署调试工作区。实机测试前需要确认急停、吊挂/保护措施、网络
-domain、DDS topic 和策略/关节顺序完全匹配。
-
-### 许可证
-
-本工作区原创代码、文档、脚本和演示媒体默认使用 MIT License，见
-`LICENSE`。第三方组件保留各自许可证，见 `THIRD_PARTY_NOTICES.md` 和各
-third-party 目录内的 license 文件。
-
-<a id="english"></a>
-## English
-
-This is the `test/lidar-blindzone-heightmap` branch for Unitree G1 29DOF
-sim2sim deployment, lidar heightmap bridging, and real/simulation consistency
-debugging.
-
-### Branch Goals
-
-This branch focuses on the G1-29DOF controller under
-`unitree_rl_lab/deploy/robots/g1_29dof`:
-
-- Migrate the original 21DOF active policy to the 29DOF body while locking the
-  8 additional joints.
-- Keep the policy's 21 action/observation slots in the original order instead
-  of remapping them to the 29DOF SDK natural order.
-- Bridge Livox point clouds into an 11x11 `height_scan`.
-- Add MuJoCo and deployment-side diagnostics for flat-ground, stair, and fall
-  cases.
-
-### Sim2Sim Demo
+## Sim2Sim Demo / 演示
 
 ![G1 lidar heightmap sim2sim stable walk](docs/media/lidar_sim2sim_stable_walk.gif)
 
-HD MP4: `docs/media/lidar_sim2sim_stable_walk.mp4`
+HD video / 高清视频：`docs/media/lidar_sim2sim_stable_walk.mp4`
 
-This lidar `height_scan` sim2sim demo shows the G1-29DOF robot stably crossing
-the stepping-stone sequence in the MuJoCo stair scene using lidar heightmap
-input.
+The demo shows the G1-29DOF robot using lidar-derived `height_scan` input to stably cross the stepping-stone sequence in the MuJoCo stair scene.
 
-### Main Directories
+该演示展示 G1-29DOF 在 MuJoCo 台阶场景中使用 lidar 生成的 `height_scan` 输入稳定跨越石块序列。
 
-- `unitree_rl_lab/deploy/robots/g1_29dof/`: G1-29DOF controller, policy config,
-  heightmap bridge, and diagnostics.
-- `unitree_mujoco/`: Unitree MuJoCo simulation, robot XML files, scenes, and
-  DDS bridge.
-- `deploy_lstm/`: earlier LSTM/perception deployment experiments and analysis
-  helpers.
-- `unitree_sdk2/`: Unitree SDK2 dependency and examples.
+## Current Policy / 当前策略
 
-### Current Policy
+The policy currently used for this deployment experiment is located at:
 
-The current policy under test is:
-
-```text
+~~~text
 unitree_rl_lab/deploy/robots/g1_29dof/config/policy/velocity/lidar_blindwalking_model2600
-```
+~~~
 
-ONNX input/output convention:
+ONNX interface / ONNX 输入输出：
 
-- observation: `[1, 193]`
-- action: `[1, 21]`
-- `height_scan`: 121 dimensions
+| Item | Shape |
+| --- | ---: |
+| Observation | `[1, 193]` |
+| Action | `[1, 21]` |
+| `height_scan` | 121 dims |
 
-### Run Order
+The main controller and bridge code are under:
 
-Terminal 1, start MuJoCo:
+~~~text
+unitree_rl_lab/deploy/robots/g1_29dof/
+~~~
 
-```bash
-cd /home/ubt2204/work/111/TRY/sim2sim/unitree_mujoco/simulate
+## Sim2Sim Run Order / 运行顺序
+
+Run the following commands from the repository root.
+
+从仓库根目录开始，按以下顺序运行。
+
+### Terminal 1 — MuJoCo
+
+~~~bash
+cd unitree_mujoco/simulate
 ./build/unitree_mujoco --network lo --domain_id 0
-```
+~~~
 
-Terminal 2, start the heightmap bridge:
+### Terminal 2 — Heightmap bridge
 
-```bash
-cd /home/ubt2204/work/111/TRY/sim2sim/unitree_rl_lab/deploy/robots/g1_29dof
+~~~bash
+cd unitree_rl_lab/deploy/robots/g1_29dof
 ./scripts/run_lidar_blindwalking_model2600_heightmap_bridge.sh
-```
+~~~
 
-Terminal 3, start the controller:
+### Terminal 3 — G1 controller
 
-```bash
-cd /home/ubt2204/work/111/TRY/sim2sim/unitree_rl_lab/deploy/robots/g1_29dof
+~~~bash
+cd unitree_rl_lab/deploy/robots/g1_29dof
 ./build/g1_ctrl --network lo
-```
+~~~
 
-### Safety
+## Deployment Notes / 部署说明
 
-This is a robot deployment debugging workspace. Before real-robot tests,
-confirm emergency stop, suspension/protection, network domain, DDS topics,
-and exact policy/joint ordering.
+This branch is an experimental robot-deployment workspace. Before real-robot testing, verify:
 
-### License
+- emergency stop, suspension, and physical protection;
+- network interface, DDS domain, and DDS topics;
+- exact policy observation/action ordering;
+- active-joint and locked-joint mapping between the 21DOF policy and the 29DOF robot;
+- consistency between the heightmap bridge and the policy input convention.
 
-Original workspace code, documentation, scripts, and included demo media are
-licensed under the MIT License unless otherwise noted. See `LICENSE`.
-Vendored third-party components keep their own licenses; see
-`THIRD_PARTY_NOTICES.md` and the license files in each third-party directory.
+本分支属于机器人部署调试工作区。实机测试前请确认：
+
+- 急停、吊挂与物理保护措施；
+- 网络接口、DDS domain 与 DDS topic；
+- policy observation / action 顺序完全一致；
+- 21DOF policy 与 29DOF 机器人之间的 active / locked joint 映射；
+- heightmap bridge 与策略输入约定一致。
+
+## License / 许可证
+
+Original code, documentation, scripts, and included demo media in this workspace are licensed under the MIT License unless otherwise noted. See `LICENSE`.
+
+本工作区原创代码、文档、脚本和演示媒体默认使用 MIT License，详见 `LICENSE`。
+
+Vendored third-party components retain their own licenses; see `THIRD_PARTY_NOTICES.md` and the license files inside the corresponding third-party directories.
