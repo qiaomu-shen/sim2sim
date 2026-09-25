@@ -22,6 +22,16 @@ This repository is a working space for **Unitree G1 / G1-29DOF simulation, sim2s
 - `tools/` — local helper and diagnostic tools. / 本地辅助与诊断工具。
 
 
+## Sim2Sim Demo / 演示
+
+![G1 lidar heightmap sim2sim stable walk](https://raw.githubusercontent.com/qiaomu-shen/sim2sim/test/lidar-blindzone-heightmap/docs/media/lidar_sim2sim_stable_walk.gif)
+
+**HD MP4 / 高清视频:** [lidar_sim2sim_stable_walk.mp4](https://github.com/qiaomu-shen/sim2sim/blob/test/lidar-blindzone-heightmap/docs/media/lidar_sim2sim_stable_walk.mp4)
+
+This demo shows the **G1-29DOF** robot using lidar-derived `height_scan` input to stably cross the stepping-stone sequence in the MuJoCo stair scene. The demo belongs to the `test/lidar-blindzone-heightmap` experiment branch.
+
+该演示展示 **G1-29DOF** 在 MuJoCo 台阶场景中使用 lidar 生成的 `height_scan` 输入稳定跨越石块序列。演示对应 `test/lidar-blindzone-heightmap` 实验分支。
+
 ## Current Branch: `main`
 
 The `main` branch acts as the **entry point and shared workspace** for the repository. It keeps the common dependency layout, deployment infrastructure, licensing information, and an index of experiment branches.
